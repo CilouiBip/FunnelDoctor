@@ -1,0 +1,164 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+
+// Charger les variables d'environnement
+dotenv.config();
+
+// Configuration Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+
+// Création de la table de migrations si elle n'existe pas
+async function ensureMigrationsTable() {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  console.log('🔄 Vérification de la table migrations...');
+  
+  const { error } = await supabase
+    .from('_migrations_init')
+    .select('*')
+    .limit(1)
+    .then(async () => {
+      // La table n'existe pas, on crée d'abord la table migrations
+      return supabase
+        .query(`
+          CREATE TABLE IF NOT EXISTS migrations (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `);
+    })
+    .catch(async () => {
+      // Erreur attendue, on crée la table migrations
+      return supabase
+        .query(`
+          CREATE TABLE IF NOT EXISTS migrations (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `);
+    });
+  
+  if (error) {
+    console.error('❌ Erreur lors de la création de la table migrations:', error);
+    process.exit(1);
+  }
+  
+  console.log('✅ Table migrations prête');
+}
+
+// Récupération des migrations déjà exécutées
+async function getAppliedMigrations() {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  const { data, error } = await supabase
+    .from('migrations')
+    .select('name')
+    .order('id', { ascending: true });
+  
+  if (error) {
+    console.error('❌ Erreur lors de la récupération des migrations appliquées:', error);
+    return [];
+  }
+  
+  return data.map(row => row.name);
+}
+
+// Exécution d'une migration
+async function runMigration(migrationName: string, filePath: string) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  console.log(`🔄 Exécution de la migration: ${migrationName}`);
+  
+  try {
+    // Lecture du fichier SQL
+    const sql = fs.readFileSync(filePath, 'utf8');
+    
+    // Exécution du SQL
+    const { error: migrationError } = await supabase.rpc('pg_dump', { 
+      query: sql,
+      params: [] 
+    });
+    
+    if (migrationError) {
+      console.error(`❌ Erreur lors de l'exécution de la migration ${migrationName}:`, migrationError);
+      return false;
+    }
+    
+    // Enregistrement de la migration appliquée
+    const { error: recordError } = await supabase
+      .from('migrations')
+      .insert([{ name: migrationName }]);
+    
+    if (recordError) {
+      console.error(`❌ Erreur lors de l'enregistrement de la migration ${migrationName}:`, recordError);
+      return false;
+    }
+    
+    console.log(`✅ Migration appliquée: ${migrationName}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Erreur lors de l'exécution de la migration ${migrationName}:`, error);
+    return false;
+  }
+}
+
+// Fonction principale pour exécuter toutes les migrations
+async function migrate() {
+  try {
+    // S'assurer que la table de migrations existe
+    await ensureMigrationsTable();
+    
+    // Récupérer les migrations déjà appliquées
+    const appliedMigrations = await getAppliedMigrations();
+    console.log(`ℹ️ ${appliedMigrations.length} migrations déjà appliquées`);
+    
+    // Récupérer toutes les migrations dans le dossier
+    const migrationsDir = path.join(__dirname, '..', 'migrations');
+    const migrationFiles = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql'))
+      .sort(); // Tri alphabétique pour garantir l'ordre d'exécution
+    
+    console.log(`ℹ️ ${migrationFiles.length} fichiers de migration trouvés`);
+    
+    // Filtrer les migrations non encore appliquées
+    const pendingMigrations = migrationFiles.filter(file => !appliedMigrations.includes(file));
+    
+    if (pendingMigrations.length === 0) {
+      console.log('✅ Toutes les migrations sont déjà appliquées');
+      return;
+    }
+    
+    console.log(`ℹ️ ${pendingMigrations.length} migrations à appliquer`);
+    
+    // Exécuter les migrations en séquence
+    let success = true;
+    for (const migration of pendingMigrations) {
+      const migrationPath = path.join(migrationsDir, migration);
+      const result = await runMigration(migration, migrationPath);
+      
+      if (!result) {
+        success = false;
+        break;
+      }
+    }
+    
+    if (success) {
+      console.log('✅ Toutes les migrations ont été appliquées avec succès');
+    } else {
+      console.error('❌ Le processus de migration a échoué');
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors du processus de migration:', error);
+    process.exit(1);
+  }
+}
+
+// Exécuter les migrations
+migrate();
