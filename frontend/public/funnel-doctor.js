@@ -112,9 +112,8 @@
     
     const payload = {
       visitor_id: visitorId,
-      site_id: config.siteId,
       event_type: eventType,
-      event_data: { ...eventData, ...utmParams },
+      event_data: { ...eventData, ...utmParams, site_id: config.siteId },
       page_url: window.location.href,
       referrer: document.referrer
     };
@@ -201,17 +200,36 @@
     }
   }
   
-  // Fonction pour réécrire les liens CTA avec les UTM stockés
+  // Fonction pour réécrire les liens CTA avec les UTM stockés et ajouter des écouteurs d'événements
   function rewriteCTALinks() {
     const storedUTMs = getStoredUTMParams();
     
-    if (!storedUTMs) return;
-    
+    // Toujours exécuter pour ajouter les écouteurs d'événements, même sans UTM
     const links = document.querySelectorAll(config.selectors);
     
     links.forEach(link => {
-      // Seulement pour les éléments <a> avec un href
-      if (link.tagName === 'A' && link.href) {
+      // Ajouter l'écouteur d'événements pour le clic si pas déjà traité
+      if (!link.hasAttribute('data-fd-click-listener')) {
+        link.addEventListener('click', function(e) {
+          const linkData = {
+            element_type: link.tagName.toLowerCase(),
+            element_id: link.id || null,
+            element_class: link.className || null,
+            element_text: link.textContent?.trim() || null,
+            href: link.href || null,
+            timestamp: new Date().toISOString()
+          };
+          
+          // Envoyer l'événement de clic
+          trackEvent('click', linkData);
+        });
+        
+        // Marquer comme traité pour l'écouteur d'événements
+        link.setAttribute('data-fd-click-listener', 'true');
+      }
+      
+      // Seulement pour les éléments <a> avec un href et s'il y a des UTMs à ajouter
+      if (link.tagName === 'A' && link.href && storedUTMs) {
         const originalUrl = link.href;
         const newUrl = addUTMToUrl(originalUrl);
         

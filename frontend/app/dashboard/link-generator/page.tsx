@@ -31,11 +31,15 @@ export default function LinkGenerator() {
     
     const uniqueId = generateUniqueId();
     const utmParams = new URLSearchParams();
+    
+    // Paramètres UTM standards
     utmParams.append('utm_source', formData.source);
     utmParams.append('utm_medium', formData.medium);
     if (formData.campaign) utmParams.append('utm_campaign', formData.campaign);
     if (formData.content) utmParams.append('utm_content', formData.content);
-    utmParams.append('funnelDoctor_id', uniqueId);
+    
+    // Identifiant de tracking ajouté discrètement à la fin (fd_tlid = FunnelDoctor Tracking Link ID)
+    utmParams.append('fd_tlid', uniqueId);
     
     const finalUrl = `${formData.url}${formData.url.includes('?') ? '&' : '?'}${utmParams.toString()}`;
     setGeneratedLink(finalUrl);
