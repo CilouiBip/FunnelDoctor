@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FunnelDoctor - Test du Snippet de Tracking</title>
+  <!-- Style de base pour la page de test -->
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      border-bottom: 2px solid #4a86e8;
+      padding-bottom: 10px;
+      color: #2c3e50;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background-color: #4a86e8;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 0;
+    }
+    button:hover {
+      background-color: #3a76d8;
+    }
+    #eventLog {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    .event-item {
+      border-bottom: 1px solid #eee;
+      padding: 5px 0;
+    }
+    .info-box {
+      background-color: #e8f4fd;
+      border-left: 4px solid #4a86e8;
+      padding: 10px 15px;
+      margin: 15px 0;
+    }
+  </style>
+  
+  <!-- Inclusion du script de tracking FunnelDoctor -->
+  <script src="/assets/funnel-doctor.js"></script>
+</head>
+<body>
+  <h1>FunnelDoctor - Test du Snippet de Tracking</h1>
+  
+  <div class="info-box">
+    <p>Cette page permet de tester le fonctionnement du snippet de tracking FunnelDoctor. Chaque interaction est enregistrée et envoyée u00e0 l'API.</p>
+    <p>Ouvrez la console pour voir les du00e9tails des u00e9vu00e9nements de tracking.</p>
+  </div>
+  
+  <div class="card">
+    <h2>Informations du Visiteur</h2>
+    <p><strong>Visitor ID:</strong> <span id="visitorId">-</span></p>
+    <p><strong>URL actuelle:</strong> <span id="currentUrl">-</span></p>
+    <p><strong>Referrer:</strong> <span id="referrer">-</span></p>
+  </div>
+  
+  <div class="card">
+    <h2>Tester les u00c9vu00e9nements</h2>
+    <button id="buttonClickTest">Tester Clic Bouton</button>
+    <button id="customEventTest">Envoyer u00c9vu00e9nement Personnalisu00e9</button>
+    <button id="formSubmitTest">Simuler Soumission Formulaire</button>
+  </div>
+  
+  <div class="card">
+    <h2>Log des u00c9vu00e9nements</h2>
+    <div id="eventLog"></div>
+  </div>
+  
+  <script>
+    // Fonction pour ajouter un u00e9vu00e9nement au log
+    function logEvent(eventType, eventData) {
+      const log = document.getElementById('eventLog');
+      const timestamp = new Date().toLocaleTimeString();
+      const eventItem = document.createElement('div');
+      eventItem.className = 'event-item';
+      eventItem.textContent = `[${timestamp}] ${eventType}: ${JSON.stringify(eventData, null, 2)}`;
+      log.prepend(eventItem);
+    }
+    
+    // Attendre que le DOM soit chargu00e9
+    document.addEventListener('DOMContentLoaded', function() {
+      // Afficher les informations du visiteur
+      document.getElementById('visitorId').textContent = window.FunnelDoctor.getVisitorId();
+      document.getElementById('currentUrl').textContent = window.location.href;
+      document.getElementById('referrer').textContent = document.referrer || '(aucun)';
+      
+      // u00c9vu00e9nement de clic sur bouton
+      document.getElementById('buttonClickTest').addEventListener('click', function() {
+        const eventData = {
+          button_id: 'buttonClickTest',
+          button_text: 'Tester Clic Bouton'
+        };
+        window.FunnelDoctor.track('button_click', eventData);
+        logEvent('button_click', eventData);
+      });
+      
+      // u00c9vu00e9nement personnalisu00e9
+      document.getElementById('customEventTest').addEventListener('click', function() {
+        const eventData = {
+          custom_property: 'valeur test',
+          timestamp: Date.now()
+        };
+        window.FunnelDoctor.track('custom_event', eventData);
+        logEvent('custom_event', eventData);
+      });
+      
+      // Simulation soumission formulaire
+      document.getElementById('formSubmitTest').addEventListener('click', function() {
+        const eventData = {
+          form_type: 'test',
+          fields_count: 3,
+          success: true
+        };
+        window.FunnelDoctor.track('form_submit', eventData);
+        logEvent('form_submit', eventData);
+      });
+      
+      // Enregistrer l'u00e9vu00e9nement initial de page_view
+      logEvent('page_view', {
+        title: document.title,
+        path: window.location.pathname
+      });
+    });
+  </script>
+</body>
+</html>
