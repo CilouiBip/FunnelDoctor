@@ -7,7 +7,8 @@ const SnippetPage = () => {
     siteId: 'fd-123456',
     utmDays: '30',
     selectors: 'a.cta, button.buy-now',
-    autoCapture: true
+    autoCapture: true,
+    scriptUrl: 'http://localhost:3000/funnel-doctor.js' // URL par défaut pour le développement local
   });
 
   const [copied, setCopied] = useState(false);
@@ -29,7 +30,7 @@ const SnippetPage = () => {
     var f=d.getElementsByTagName(s)[0],
     j=d.createElement(s);
     j.async=true;
-    j.src="https://app.funneldoctor.io/assets/funnel-doctor.js";
+    j.src="${config.scriptUrl}";
     j.setAttribute("data-fd-site", "${config.siteId}");
     j.setAttribute("data-fd-utm-days", "${config.utmDays}");
     j.setAttribute("data-fd-selectors", "${config.selectors}");
@@ -62,10 +63,21 @@ const SnippetPage = () => {
                 name="siteId" 
                 value={config.siteId} 
                 onChange={handleConfigChange} 
-                className="w-full px-4 py-2 border rounded-md bg-gray-50" 
-                readOnly 
+                className="w-full px-4 py-2 border rounded-md" 
               />
               <p className="text-xs text-gray-500 mt-1">Identifiant unique pour votre site</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL du Script</label>
+              <input 
+                type="text" 
+                name="scriptUrl" 
+                value={config.scriptUrl} 
+                onChange={handleConfigChange} 
+                className="w-full px-4 py-2 border rounded-md" 
+              />
+              <p className="text-xs text-gray-500 mt-1">URL du script FunnelDoctor (en local: http://localhost:3000/funnel-doctor.js)</p>
             </div>
             
             <div>
@@ -149,12 +161,22 @@ const SnippetPage = () => {
             <h3 className="font-medium text-lg mb-2">Instructions d'installation</h3>
             <ol className="list-decimal list-inside space-y-2 text-gray-700">
               <li>Copiez le code ci-dessus</li>
-              <li>Collez-le juste avant la balise &lt;/head&gt; de votre site</li>
-              <li>Vu00e9rifiez l'installation en utilisant notre outil de validation</li>
+              <li>Collez-le juste avant la balise &lt;/head&gt; de votre site ou dans votre outil d'email marketing</li>
+              <li>Pour tester avec ConvertKit, utilisez l'URL locale du script (http://localhost:3000/funnel-doctor.js)</li>
+              <li>Si ConvertKit ne peut pas accéder à localhost, utilisez un tunnel public (ngrok) et mettez à jour l'URL</li>
             </ol>
             
+            <div className="mt-4 p-3 bg-blue-50 rounded-md border border-blue-200">
+              <h4 className="font-medium text-blue-800">Test avec ConvertKit</h4>
+              <ol className="list-decimal list-inside space-y-1 text-blue-700 mt-2">
+                <li>Générez votre snippet avec l'URL de script appropriée</li>
+                <li>Dans ConvertKit, ajoutez le snippet en utilisant le bloc HTML ou Script</li>
+                <li>Vérifiez que le siteId et les autres paramètres sont correctement configurés</li>
+              </ol>
+            </div>
+            
             <a href="/tracking/installation" className="inline-block mt-4 text-primary hover:underline">
-              Voir le guide du00e9taillu00e9 →
+              Voir le guide détaillé →
             </a>
           </div>
         </div>
