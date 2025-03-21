@@ -1,204 +1,204 @@
-# FunnelDoctor - Roadmap de Développement (MVP Scalable)
+# FunnelDoctor - Roadmap de Développement
 
-Cette roadmap est focalisée sur la livraison d'un MVP en quelques semaines tout en posant des bases techniques suffisamment solides pour scaler par la suite. Nous conserverons l'esprit du MVP, mais nous intégrerons une architecture modulaire et extensible pour ne pas être bloqués si le projet grandit rapidement.
+Cette roadmap représente la vision détaillée du produit FunnelDoctor, incluant la configuration du "puzzle funnel", le traitement des données et l'architecture technique. Le document sert de référence pour toute l'équipe et guide le développement futur.
 
-## Aperçu du Projet
+## 1. Rappel du Contexte
 
-**FunnelDoctor** est un micro-SaaS de tracking organique permettant de suivre le parcours des leads depuis YouTube jusqu'à la vente finale. Il offre aux infopreneurs des insights précis sur leur funnel de conversion.
+**FunnelDoctor** est un outil permettant de tracer le parcours d'un lead depuis la source (YouTube/Instagram/etc.) jusqu'à la conversion finale (CTA, Book Call, Payment).
 
-## Vision Générale
+**Composants clés :**
+- **Snippet** : Captation UTMs, insertion d'événements "click," "page_view," "purchase," etc. envoyés au backend.
+- **Dashboard** : Un ensemble de pages d'analyse (Executive Summary, Funnel Analytics, Source Breakdown, Vidalytics integration).
 
-FunnelDoctor permet aux créateurs de contenu et infopreneurs de :
+**État actuel :**
+- ✅ Tables dans Supabase : leads, touchpoints, conversion_events, etc.
+- ✅ Snippet fonctionnel (en local) + migrations sur Supabase.
+- 🔄 À finaliser : UX puzzle funnel + traitement des données.
 
-1. Générer des liens UTM (avec identifiant unique) pour les descriptions YouTube
-2. Tracker automatiquement les visiteurs sur les landing pages
-3. Centraliser les événements (email ouvert, rendez-vous pris, achat, etc.)
-4. Visualiser le funnel complet avec les taux de conversion
-5. Attribuer un score à chaque lead et visualiser sa timeline
+## 2. Vision d'ensemble du Puzzle Funnel (Option A)
 
-## Architecture Technique
+### 2.1 Approche Option A
 
-### Backend
+Au moment de l'arrivée d'un nouvel événement, on détermine "En quel step du puzzle se situe-t-il ?" d'après la config courante du funnel, et on enregistre cette information (ex. event.funnel_step_id).
 
-- **Technologie**: Node.js avec TypeScript
-- **Framework**: Express ou Nest.js
-- **Endpoints principaux**:
-  - POST `/api/leads` - Créer/mettre à jour un lead
-  - POST `/api/events` - Enregistrer un événement
-  - GET `/api/report/funnel` - Récupérer les statistiques du funnel
-  - POST `/api/webhooks/stripe` - Webhook pour les paiements
-  - POST `/api/webhooks/calendly` - Webhook pour les rendez-vous
-- **Librairies recommandées**:
-  - Express/Nest.js pour l'API
-  - pg ou ORM (Sequelize/TypeORM) pour la base de données
+**Principes clés :**
+- Si l'utilisateur modifie le puzzle plus tard (réordonne, supprime un step…), les anciens events ne changent pas
+- On ne recalcule pas l'historique → c'est le plus simple, on évite de casser la data
+- Plus tard, si on veut basculer sur un "versioning," on pourra adapter la DB sans tout casser
 
-### Base de Données
+## 3. Roadmap & Architecture
 
-- **Technologie**: PostgreSQL (ou Supabase)
-- **Schéma principal**:
-  - Table `leads` - Stockage des informations sur les leads
-  - Table `events` - Suivi des événements du funnel
-  - Table `sales` - Détails des ventes (optionnel)
-- **Logique clé**:
-  - Utilisation du `funnel_doctor_id` jusqu'à l'opt-in
-  - Mise à jour du lead pour associer l'ID au email
-  - Enregistrement de chaque événement dans la table events
+### 3.1 Structure globale du Dashboard
 
-### Snippet de Tracking
+#### 1. Executive Summary
+- KPI cards : #Leads, #RDVs, #Ventes, CA total…
+- Comparaison "cette semaine / la semaine dernière"
+- Lien vers plus de détails
 
-- Script JavaScript à inclure sur les landing pages
-- Fonctionnalités:
-  - Récupération du `funnelDoctor_id` dans l'URL
-  - Stockage dans un cookie/localStorage
-  - Envoi d'événements via POST vers `/api/events`
+#### 2. Funnel Analytics
+- Puzzle funnel config (les "blocs" / "steps")
+- Visualisation (graphe ou steps horizontales) montrant combien sont passés Step 1 → Step 2, etc.
+- Taux de drop-off
+- Filtre (source = YouTube, Instagram, etc.)
 
-### Intégrations Externes
+#### 3. Source Breakdown
+- Tableau par source (YouTube, Instagram, Email, etc.)
+- #Leads, #Appointments, #Sales, CA, ratio lead→sale…
+- Graphique Recharts si besoin (line chart des leads par jour/semaine)
 
-- **Stripe**: Webhook pour les paiements
-- **Calendly**: Webhook pour les rendez-vous
-- **ActiveCampaign**: Tracking des emails
-- **YouTube**: Analytics API pour les statistiques vidéo
+#### 4. Video Analytics (Vidalytics)
+- Optionnel : comparer 2 vidéos, voir watchers, CTA in-video, etc.
 
-### Frontend / Dashboard
+### 3.2 "Puzzle Editor" (Funnel Analytics)
 
-- **Framework**: React / Next.js
-- **Fonctionnalités principales**:
-  - Générateur de liens UTM
-  - Visualisation du funnel avec taux de conversion
-  - Liste des leads avec score et source
-  - Timeline des événements par lead
-  - Interface d'onboarding
+#### User Flow :
+1. L'utilisateur va sur /dashboard/funnel (ou "Funnel Analytics")
+2. Il voit la liste de "Steps" existants (ex. "Landing," "Calendly," "Payment")
+3. Il peut drag-and-drop pour réordonner, ou cliquer "+ Add Step"
+4. Quand il ajoute un step :
+   - Donne un "name" ("VSL," "Upsell," etc.)
+   - Sélectionne un "type" ou "condition," ex. :
+     - event_type = 'page_view' + page_url = 'myvsl.com'
+     - event_type = 'rdv_scheduled'
+     - event_type = 'purchase_made'
+5. Il enregistre → Les futurs events qui matcheront cette "condition" seront assignés à ce step
 
-### Design et Style Visuel
+#### Storage :
+- Table funnel_steps :
+  - id (UUID)
+  - step_order (int)
+  - name (text)
+  - match_condition (jsonb) ex. {"event_type": "purchase_made", "page_url": "myvsl.com"}
 
-- **Palette de couleurs**:
-  - Violet primaire: #9D6AFF
-  - Violet secondaire: #6C63FF
-  - Blanc: #FFFFFF
-  - Fond clair: #F8F9FD
-- **Typographie**: Inter ou SF Pro Display
-- **Effets visuels**: Ombres, dégradés, coins arrondis
+- At dispatch : quand le backend reçoit un event, il scanne la config "funnel_steps" → s'il en trouve un match, on met event.funnel_step_id = thisStepId
 
-## Plan de Développement Détaillé (3 semaines)
+#### Affichage :
+- UI : On affiche Step1, Step2… StepN en barres, indiquant "X leads passés, Y% drop-off"
 
-### Semaine 1 : Mise en place des fondations
+### 3.3 Data Processing (traitement)
 
-#### 1.1 Choix des technos & Setup de base
-- **Backend** :
-  - Utiliser Nest.js (TypeScript) pour un projet modulaire et maintenable (controllers, services, modules).
-  - Gérer l'authentification des utilisateurs (infopreneurs) avec JWT (ou Supabase Auth).
-- **Base de données** :
-  - Supabase (PostgreSQL managé) pour accélérer le prototypage et faciliter l'authentification.
-- **Front** :
-  - Next.js (React) pour le côté SSR/SSG et la rapidité de déploiement.
-  - Tailwind CSS pour construire rapidement l'UI.
-- **Infrastructure** :
-  - Déploiement du front sur Vercel.
-  - Backend sur Railway / Render.
-  - DB sur Supabase.
-  - (Optionnel) Mise en place d'un petit Redis managé (Upstash) si nécessaire.
+#### Réception de l'event :
+- POST /api/touchpoints → backend
+- On lit touchpoints.matchStep(), ex. un code comme :
 
-**Tâches concrètes (Jour 1 & 2)**
-1. Créer un repo Git et initialiser Nest.js + Next.js.
-2. Mettre en place la base Supabase et définir les tables principales :
-   - funnels (pour gérer plusieurs funnels),
-   - leads,
-   - events,
-   - éventuellement sales ou events = "PURCHASE".
-3. Implémenter la configuration d'auth via JWT ou Supabase Auth.
-4. Setup CI/CD avec GitHub Actions pour automatiser les déploiements.
+```
+for step in funnel_steps:
+  if event_type == step.match_condition.event_type && 
+     page_url == step.match_condition.page_url:
+     event.funnel_step_id = step.id
+     break
+```
 
-#### 1.2 Endpoints & Schéma minimal
-- **Endpoints Nest.js à créer** :
-  1. `/auth` : inscription / login (JWT).
-  2. `/funnels` : CRUD sur les funnels.
-  3. `/leads` : création/mise à jour d'un lead (associer funnel_doctor_id / email).
-  4. `/events` : réception d'événements (opt-in, page_view, etc.).
-  5. `/webhooks` : pour Stripe, Calendly (et ActiveCampaign si webhook est utilisé).
+- On enregistre en DB touchpoints (funnel_step_id)
 
-**Tâches concrètes (Jour 3 & 4)**
-1. Implémenter la logique Nest.js, test unitaire minimal.
-2. Migrer la DB (tables + index sur funnel_doctor_id, email).
-3. Gérer un champ funnel_id dans leads et events pour distinguer plusieurs funnels.
+#### Lecture / "alimente dashboard"
+- Quand on calcule "#Leads" ou "rdv," on regarde les events (funnel_step_id) correspondants
+- Ex. "sales = count of events with step 'purchase'"
+- On fait un agrégat pour la vue globale
 
-### Semaine 2 : Tracking, Webhooks et Dashboard
+#### Création de "North Star" (Executive Summary)
+- On additionne "touchpoints" ou "conversions" par step "payment/purchase"
+- On fait un "SELECT date_trunc('week', created_at), count(*) FROM touchpoints WHERE funnel_step_id=somePurchaseStep … GROUP BY date_trunc('week', …)"
 
-#### 2.1 Tracking et snippet client
-- **Snippet JS** :
-  - Récupérer funnel_doctor_id depuis l'URL, stocker en cookie + localStorage.
-  - Envoyer "PAGE_VIEW" en POST /events.
-  - Sur opt-in (si possible), capturer l'email et faire un appel à /leads ou /events (event = "OPTIN").
-- **Fingerprinting (facultatif pour MVP)** :
-  - Rester pour l'instant sur un funnel_doctor_id + cookie.
-  - Prévoir une API modulaire pour ajouter plus tard du fingerprinting si nécessaire.
+### 3.4 Sur "Changement" du puzzle
+- Option A (simple) : On ne recalcule pas. Les events existants conservent funnel_step_id. S'ils ont un step qui n'existe plus, tant pis, c'est orphelin
+- L'utilisateur comprend que "ce nouveau funnel step n'affecte que le futur"
 
-**Tâches concrètes (Jour 1 & 2)**
-1. Écrire le snippet JS (Tailwind / Next.js).
-2. Mettre en place un module "Tracking" dans Nest.js pour enregistrer les événements.
-3. Intégrer le snippet sur une page test et valider le flux.
+### 3.5 Vers un "Option B (versioning)"
+- Plus tard, si on veut :
+  - On rajoute un champ "funnel_version_id" sur touchpoints
+  - On fait un "publish" d'une nouvelle version
+  - Les events futurs prennent funnel_version=2, etc.
 
-#### 2.2 Webhooks externes
-- **Stripe** :
-  - Endpoint `/webhooks/stripe`.
-  - Sur checkout.session.completed, récupérer email/ID client → associer à un lead → créer un event "PURCHASE".
-- **Calendly** :
-  - Endpoint `/webhooks/calendly`.
-  - Sur "invitee.created", récupérer l'email → event_type = "APPOINTMENT_BOOKED".
-- **ActiveCampaign** :
-  - Soit webhook (ou polling). Sur nouveau contact ou changement de statut, associer email → event "EMAIL_OPEN", "EMAIL_CLICK", etc.
+## 4. Impact sur la DB & Migrations
 
-**Tâches concrètes (Jour 3 & 4)**
-1. Configurer un module WebhooksModule dans Nest.js.
-2. Tester Stripe / Calendly en sandbox.
-3. Vérifier la persistance dans la DB (table events).
+### 4.1 Nouvelles tables
+- `funnel_steps` (id, step_order, name, match_condition, created_at, updated_at)
+- Optionnel: `funnel` (id, funnel_name, user_id, created_at, updated_at) pour gérer plusieurs funnels
 
-#### 2.3 Dashboard minimal
-- **Next.js front** :
-  1. Générateur de lien UTM + funnel_doctor_id (ou ID auto) → l'utilisateur (infopreneur) crée un nouveau funnel + clique sur "Générer Lien".
-  2. Vue "Funnel" : barres de progression (visites → optins → RDV → ventes).
-  3. Vue "Leads" : liste de leads (email, date, source funnel).
-  4. Timeline lead : suite d'events (page_view, optin, purchase…).
+### 4.2 Modifications de tables existantes
+- Ajout d'une colonne `funnel_step_id` (UUID, NULL) à `touchpoints`, référençant `funnel_steps.id`
+- Préparation pour un éventuel `version_id` futur
 
-**Tâches concrètes (Jour 5)**
-1. Créer un "DashboardModule" front (ou pages Next.js "/dashboard", "/funnels", "/leads/:id").
-2. Consommer l'API Nest.js pour afficher stats, conversions, etc.
-3. Mettre en place un design minimal avec Tailwind CSS.
+### 4.3 Migrations
+- Création d'un script SQL pour les nouvelles tables et modifications
+- Implémentation via le système de migrations Supabase
 
-### Semaine 3 : Finitions, Scalabilité & Tests
+## 5. Organisation des Vues du Dashboard
 
-#### 3.1 Scoring & multi-funnel
-- **Scoring** :
-  - Ajouter un champ score dans leads.
-  - Logique : +1 point sur opt-in, +3 sur RDV, +5 sur achat, etc.
-  - Mise à jour du score à chaque event.
-- **Gestion multi-funnel** :
-  - L'utilisateur peut configurer plusieurs funnels (table funnels), chaque lead/event est relié à un funnel_id.
-  - Le dashboard permet de filtrer par funnel.
+### 5.1 Dashboard principal (`/dashboard`)
+- Executive Summary avec KPIs principaux
+- Graphiques d'évolution sur les 4-5 dernières semaines
 
-**Tâches concrètes (Jour 1 & 2)**
-1. Implanter un ScoringService (Nest.js).
-2. Mettre à jour la table leads sur chaque nouvel event.
-3. Afficher le score dans la liste des leads (front Next.js).
+### 5.2 Funnel Analytics (`/dashboard/funnel`)
+- Éditeur de puzzle avec drag-and-drop
+- Visualisation du funnel avec barres horizontales indiquant les volumes et conversions
 
-#### 3.2 Tests, QA et Onboarding
-- **Tests E2E** :
-  - Mettre en place quelques end-to-end tests (via Cypress ou Playwright pour le front, Jest pour le backend).
-  - Tester la création d'un funnel, la génération d'un lien, l'arrivée sur la page, l'opt-in, la vente, etc.
-- **Onboarding** :
-  - Un petit tutoriel dans le dashboard expliquant comment intégrer le snippet, configurer les webhooks Stripe / Calendly.
-  - Vérifier la prise en compte du consentement RGPD si on vise l'UE.
+### 5.3 Source Analysis (`/dashboard/source`)
+- Breakdown par utm_source
+- Ratios de conversion par source
 
-**Tâches concrètes (Jour 3 & 4)**
-1. QA manuelle du parcours complet.
-2. Rédaction d'un mini guide d'onboarding.
-3. Correction des bugs éventuels.
+### 5.4 Video Analytics (`/dashboard/video`) - Optionnel
+- Intégration des statistiques Vidalytics
 
-#### 3.3 Déploiement & Monitoring
-- **Déploiement** :
-  - Front Next.js sur Vercel.
-  - Backend Nest.js sur Railway ou Render (connexion à Supabase).
-- **Monitoring** :
-  - Intégrer Sentry pour traquer les exceptions (front & backend).
+## 6. Questions UX & Risques identifiés
+
+### 6.1 Questions UX détaillées
+- **Suppression d'étapes :** Devons-nous autoriser la suppression d'un step existant s'il contient déjà des events ?
+  - Solution probable : "soft delete" ou avertir l'utilisateur qu'il perd l'historique
+- **Wizard initial :** Faut-il un wizard initial "Define your funnel steps" ?
+  - Envisageable pour une version future
+
+### 6.2 Risques identifiés et mitigations
+
+#### Risque 1 : Confusion de l'utilisateur lors des modifications de funnel
+- **Impact :** L'utilisateur pourrait être désorienté si les données historiques ne reflètent pas sa configuration actuelle
+- **Mitigation :** 
+  - Interface explicite sur le fait que les modifications n'affectent que les futurs événements
+  - Avertissements clairs lors de réorganisations majeures
+  - Documentation dans l'aide contextuelle
+
+#### Risque 2 : Performance du matching des conditions
+- **Impact :** Latence lors du traitement d'événements si le matching des conditions est complexe
+- **Mitigation :** 
+  - Indexation des champs de recherche fréquente
+  - Cache des configurations de funnel
+  - Optimisation des requêtes JSONB sur PostgreSQL
+
+#### Risque 3 : Évolution future vers versioning
+- **Impact :** Difficultés à évoluer vers un système de versioning si nécessaire plus tard
+- **Mitigation :**
+  - Structure de données conçue pour permettre cette évolution
+  - Documentation détaillée de l'architecture
+  - Tests anticipant cette possible évolution
+
+## 7. Feuille de Route d'Implémentation
+
+### Phase 1 : Structure de données (Semaine 1)
+1. Créer la table `funnel_steps` dans Supabase
+2. Modifier `touchpoints` pour ajouter `funnel_step_id`
+3. Mettre à jour le code de traitement des événements
+
+### Phase 2 : Éditeur de funnel (Semaine 2)
+1. Développer l'interface d'édition sur `/dashboard/funnel`
+2. Implémenter le drag-and-drop pour la réorganisation
+3. Créer le formulaire d'ajout/édition d'étape
+
+### Phase 3 : Visualisation et analyses (Semaine 3)
+1. Développer les graphiques de funnel steps avec Recharts
+2. Créer l'executive summary avec KPIs
+3. Implémenter les filtres par source et périodes
+
+### Phase 4 : Tests et optimisations (Semaine 4)
+1. Tests de performance et validation du workflow complet
+2. Optimisations d'UX et corrections de bugs
+3. Documentation utilisateur
+
+## 8. Conclusion
+
+- L'approche Option A (sans versioning) reste le plus simple et flexible pour le MVP
+- La structure permet une évolution vers Option B (versioning) si nécessaire plus tard
+- Les futures optimisations pourront inclure des analyses plus avancées par segment, cohorte, etc.
   - (Optionnel) Un début de logs structurés sur la backend DB ou un service type Logtail, Datadog.
 
 **Tâches concrètes (Jour 5)**

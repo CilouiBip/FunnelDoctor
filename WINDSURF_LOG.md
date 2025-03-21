@@ -2,6 +2,31 @@
 
 Ce fichier sert à documenter les actions réalisées à chaque étape du développement du projet FunnelDoctor, conformément à la roadmap établie.
 
+## Fonctionnalité Puzzle Funnel
+
+### 1. Recherche et Planification
+
+- ✅ **[21/03/2025]** Refonte complète du ROADMAP.md pour documenter la nouvelle approche de funnel puzzle
+  - Restructuration du document pour clarifier le contexte et les objectifs
+  - Définition détaillée de l'"Option A" (sans versioning)
+  - Documentation de l'architecture de données et des impacts sur la base de données
+  - Création des sections sur les risques et mitigations
+  - Élaboration d'une timeline d'implémentation en 4 phases
+  - Documentation des questions UX à résoudre
+  - Planification de l'organisation des vues du dashboard
+
+### 2. Points clés décidés
+
+- ✅ **[21/03/2025]** Choix de l'implémentation sans recalcul historique (Option A)
+  - Les événements existants conservent leur funnel_step_id même si la configuration du funnel change
+  - Préparation de la structure pour une éventuelle évolution vers du versioning (Option B)
+
+### 3. Prochaines étapes prévues
+
+- 🔌 **[À venir]** Implémentation des migrations Supabase pour ajouter la table `funnel_steps`
+- 🔌 **[À venir]** Modification de la table `touchpoints` pour ajouter la colonne `funnel_step_id`
+- 🔌 **[À venir]** Développement de l'interface d'édition du puzzle funnel
+
 ## Semaine 1 : Mise en place des fondations
 
 ### 1.1 Choix des technos & Setup de base
