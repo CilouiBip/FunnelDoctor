@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, RequestMethod } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -56,8 +56,13 @@ async function bootstrap() {
 
 
   
-  // Set global prefix for API endpoints
-  app.setGlobalPrefix('api');
+  // Set global prefix for API endpoints but exclude Calendly webhook path
+  // This allows the URL /api/rdv/webhook to work without double /api/api/
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'api/rdv/webhook', method: RequestMethod.POST }
+    ],
+  });
   
   // Get port from environment variables or use 3001 as default
   const port = configService.get<number>('PORT') || 3001;

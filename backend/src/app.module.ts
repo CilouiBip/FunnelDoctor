@@ -16,6 +16,7 @@ import { FunnelStepsModule } from './funnel-steps/funnel-steps.module';
 import { BridgingModule } from './bridging/bridging.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RdvModule } from './rdv/rdv.module';
+import { FunnelProgressModule } from './funnel-progress/funnel-progress.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
@@ -36,6 +37,7 @@ import { join } from 'path';
     BridgingModule,
     PaymentsModule,
     RdvModule,
+    FunnelProgressModule,
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
       serveRoot: '/',

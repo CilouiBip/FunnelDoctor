@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Chargement Scripts</title>
+</head>
+<body>
+    <h1>Test de chargement su00e9quentiel funnel-doctor.js u2192 bridging.js</h1>
+    <p>Vu00e9rifiez la console pour vous assurer qu'il n'y a pas d'erreur de chargement.</p>
+    
+    <!-- Script amu00e9lioru00e9 pour chargement su00e9quentiel -->
+    <script>
+      (function(w,d,s,fd){
+        var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s);
+        j.async=true;
+        j.src="https://funnel.doctor.ngrok.app/funnel-doctor.js";
+        j.setAttribute("data-fd-site", "fd-123456");
+        j.setAttribute("data-fd-utm-days", "30");
+        j.setAttribute("data-fd-selectors", "a.cta, button.buy-now");
+        j.setAttribute("data-fd-auto-capture", "true");
+        j.onload = function() {
+          console.log("funnel-doctor.js chargu00e9 avec succu00e8s, chargement de bridging.js...");
+          var b = d.createElement(s);
+          b.async = true;
+          b.src = "https://funnel.doctor.ngrok.app/bridging.js";
+          b.setAttribute("data-debug", "true");
+          b.setAttribute("data-calendly-selectors", "a[href*='calendly.com']");
+          f.parentNode.insertBefore(b,f);
+        };
+        f.parentNode.insertBefore(j,f);
+      })(window,document,"script");
+    </script>
+    
+    <!-- Lien Calendly pour test -->
+    <p><a href="https://calendly.com/mehdi-zen/test-funnel-doctor">Prendre rendez-vous (Calendly)</a></p>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BridgingService } from '../bridging/bridging.service';
 import { ConfigService } from '@nestjs/config';
+import { FunnelProgressService } from '../funnel-progress/funnel-progress.service';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class PaymentsService {
   constructor(
     private readonly bridgingService: BridgingService,
     private readonly configService: ConfigService,
+    private readonly funnelProgressService: FunnelProgressService,
   ) {
     // Initialiser Stripe avec la clé secrète
     const stripeSecretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
@@ -197,6 +199,23 @@ export class PaymentsService {
       this.logger.log(
         `Bridging réussi pour session ${session.id}: visitor_id=${visitor_id} -> lead_id=${result.lead_id}`
       );
+
+      // Mettre à jour la progression du funnel
+      try {
+        const funnelResult = await this.funnelProgressService.updateFunnelProgress({
+          visitor_id,
+          current_stage: 'payment_succeeded',
+          payment_at: new Date().toISOString(),
+          amount: amount,
+          product_id: session.metadata?.product_id || session.line_items?.data[0]?.price?.id,
+          user_id: userId || 'system',
+        });
+        
+        this.logger.log(`Progression du funnel mise à jour: ${funnelResult.id}, stage=${funnelResult.current_stage}`);
+      } catch (funnelError) {
+        this.logger.error('Erreur lors de la mise à jour de la progression du funnel', funnelError);
+        // On continue malgré l'erreur
+      }
 
       return result;
     } catch (error) {

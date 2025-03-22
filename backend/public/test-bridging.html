@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Bridging Calendly</title>
+</head>
+<body>
+    <h1>Test de Bridging Calendly</h1>
+    <p>Cette page teste le chargement séquentiel de funnel-doctor.js puis bridging.js avec la méthode appendChild.</p>
+    
+    <!-- Snippet amélioré pour chargement séquentiel -->
+    <script>
+      (function(w,d,s){
+        // Charger funnel-doctor.js
+        var j=d.createElement(s);
+        j.async=true;
+        j.src="https://funnel.doctor.ngrok.app/funnel-doctor.js";
+        j.setAttribute("data-fd-site", "fd-123456");
+        j.setAttribute("data-fd-utm-days", "30");
+        j.setAttribute("data-fd-selectors", "a.cta, button.buy-now");
+        j.setAttribute("data-fd-auto-capture", "true");
+        d.head.appendChild(j);
+
+        // Charger bridging.js une fois funnel-doctor.js chargé
+        j.onload = function() {
+          console.log("funnel-doctor.js chargé, on charge bridging.js...");
+          var b = d.createElement(s);
+          b.async = true;
+          b.src = "https://funnel.doctor.ngrok.app/bridging.js";
+          b.setAttribute("data-debug", "true");
+          b.setAttribute("data-calendly-selectors", "a[href*='calendly.com']");
+          d.head.appendChild(b);
+        };
+      })(window,document,"script");
+    </script>
+    
+    <!-- Un lien Calendly pour test -->
+    <div style="margin: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 5px;">
+        <h2>Tester le bridging Calendly</h2>
+        <p>Cliquez sur le lien ci-dessous et vérifiez que l'URL contient le visitor_id:</p>
+        <a href="https://calendly.com/mehdi-zen/test-funnel-doctor" class="cta" style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">Book Calendly</a>
+        
+        <h3>Instructions de test:</h3>
+        <ol>
+            <li>Ouvrez la console développeur (F12)</li>
+            <li>Vérifiez que les scripts se chargent sans erreur</li>
+            <li>Survolez le lien Calendly et inspectez l'URL dans la barre d'état</li>
+            <li>Cliquez sur le lien et confirmez que l'URL contient utm_medium=visitor_id ou fd_tlid=...</li>
+        </ol>
+    </div>
+    
+    <div style="margin: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 5px;">
+        <h2>Contenu JavaScript de la page</h2>
+        <p>Vérifiez dans la console que ces fonctions sont disponibles:</p>
+        <button onclick="console.log('Visitor ID actuel:', window.FunnelDoctor?.getVisitorId())" style="padding: 10px; margin: 5px;">Afficher visitor_id</button>
+        <button onclick="console.log('Calendly links:', document.querySelectorAll('a[href*=\'calendly.com\']'))" style="padding: 10px; margin: 5px;">Vérifier liens Calendly</button>
+    </div>
+</body>
+</html>
