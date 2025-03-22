@@ -12,6 +12,12 @@ import { TrackingLinksModule } from './tracking-links/tracking-links.module';
 import { TouchpointsModule } from './touchpoints/touchpoints.module';
 import { VisitorsModule } from './visitors/visitors.module';
 import { ConversionEventsModule } from './conversion-events/conversion-events.module';
+import { FunnelStepsModule } from './funnel-steps/funnel-steps.module';
+import { BridgingModule } from './bridging/bridging.module';
+import { PaymentsModule } from './payments/payments.module';
+import { RdvModule } from './rdv/rdv.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
@@ -25,7 +31,16 @@ import { ConversionEventsModule } from './conversion-events/conversion-events.mo
     TrackingLinksModule,
     TouchpointsModule,
     VisitorsModule,
-    ConversionEventsModule
+    ConversionEventsModule,
+    FunnelStepsModule,
+    BridgingModule,
+    PaymentsModule,
+    RdvModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      serveRoot: '/',
+      exclude: ['/api*'],
+    })
   ],
   controllers: [AppController],
   providers: [AppService],

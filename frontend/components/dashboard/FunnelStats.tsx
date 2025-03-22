@@ -2,7 +2,7 @@ import React from 'react';
 
 interface FunnelStatsProps {
   steps: {
-    name: string;
+    label: string;
     count: number;
     dropoff?: number;
     dropoffPercentage?: number;
@@ -29,7 +29,7 @@ export const FunnelStats: React.FC<FunnelStatsProps> = ({ steps }) => {
                   <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold mr-3">
                     {index + 1}
                   </div>
-                  <span className="font-medium">{step.name}</span>
+                  <span className="font-medium">{step.label}</span>
                 </div>
                 <span className="font-bold">{step.count}</span>
               </div>

@@ -1,0 +1,27 @@
+{
+  "receivedAt": "2025-03-21T18:41:18.458Z",
+  "headers": {
+    "host": "localhost:3333",
+    "user-agent": "curl/8.6.0",
+    "accept": "*/*",
+    "content-type": "application/json",
+    "content-length": "311"
+  },
+  "body": {
+    "event": "invitee.created",
+    "payload": {
+      "event_type": {
+        "name": "Test Meeting"
+      },
+      "invitee": {
+        "email": "test@example.com",
+        "name": "Test User"
+      },
+      "tracking": {
+        "utm_source": "test",
+        "utm_medium": "direct",
+        "fd_tlid": "test_visitor_456"
+      }
+    }
+  }
+}

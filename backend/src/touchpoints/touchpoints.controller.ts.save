@@ -1,3 +1,4 @@
+console.error('TEST LOG CREATION TOUCHPOINT - Cette ligne devrait apparaître pour chaque requête');
 import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TouchpointsService } from './touchpoints.service';
 import { CreateTouchpointDto } from './dto/create-touchpoint.dto';
@@ -22,11 +23,6 @@ export class TouchpointsController {
     @Ip() ip: string,
     @Req() request: Request
   ): Promise<Touchpoint> {
-    // Log crucial - doit apparaître quelque part
-    console.error('████████ TEST LOG TOUCHPOINT REQUEST ████████');
-    console.error('PAYLOAD REÇU:', JSON.stringify(request.body));
-    console.error('DTO APRÈS VALIDATION:', JSON.stringify(createTouchpointDto));
-    console.error('████████ FIN TEST LOG ████████');
     // Debug: Log complet du payload reçu pour débogage
     console.log('DEBUG - Touchpoint payload reçu:', JSON.stringify(request.body, null, 2));
     console.log('DEBUG - DTO après validation:', JSON.stringify(createTouchpointDto, null, 2));

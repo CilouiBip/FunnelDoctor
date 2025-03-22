@@ -1,0 +1,11 @@
+version: 2
+authorizations:
+  default:
+    # Remplacez par votre token ngrok
+    # trouvable sur https://dashboard.ngrok.com/get-started/your-authtoken
+web_addr: 0.0.0.0:4040
+tunnels:
+  funnel-doctor-backend:
+    proto: http
+    addr: 3001
+    domain: funnel.doctor.ngrok.app

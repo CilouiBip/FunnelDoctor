@@ -15,6 +15,13 @@ Cette roadmap représente la vision détaillée du produit FunnelDoctor, incluan
 - ✅ Snippet fonctionnel (en local) + migrations sur Supabase.
 - 🔄 À finaliser : UX puzzle funnel + traitement des données.
 
+## 1.1 Objectif Actuel : Visitor-Lead Bridging
+
+Notre priorité actuelle est d'implémenter une solution robuste de "Cookie + Payment (et RDV) Bridging" permettant de :
+- Lier les identités des visiteurs (via cookies) aux leads lors des processus de paiement et de prise de rendez-vous
+- Assurer un suivi précis et fusionner les identités lorsque les utilisateurs fournissent différents emails à différentes étapes
+- Créer un système modulaire pour cette fonctionnalité, facilitant les améliorations futures
+
 ## 2. Vision d'ensemble du Puzzle Funnel (Option A)
 
 ### 2.1 Approche Option A
@@ -231,6 +238,150 @@ for step in funnel_steps:
 
 Au final, on aura un produit qui :
 1. Gère plusieurs funnels.
+
+## 9. Roadmap d'Implémentation du Visitor-Lead Bridging (Micro-Blocs)
+
+La roadmap suivante détaille en micro-blocs l'implémentation de la solution "Cookie + Payment (et RDV) Bridging" avec deux scripts distincts (loader + bridging) pour assurer un suivi précis des visiteurs à travers le funnel.
+
+### Micro-Bloc 1 : Finalisation BDD & Migrations
+
+**Objectif** :
+- S'assurer que les tables nécessaires existent :
+  - `leads` (email, status, converted_at, etc.)
+  - `visitors` (visitor_id, lead_id, first_seen_at, last_seen_at, etc.)
+  - `conversion_events` (lead_id, event_name='payment'/'rdv', etc.)
+  - Vérifier si funnel_steps, funnels, etc., sont déjà en place selon besoin.
+
+**Tâches** :
+- Créer/ajuster les colonnes si manquantes (status, converted_at dans leads, etc.).
+- Ajouter index si nécessaire (ex: visitor_id, lead_id).
+
+**Validation/Tests** :
+- Vérifier la migration en local/Dev (aucune erreur).
+- Contrôler qu'on peut insérer un visitor_id dans visitors et faire un lien vers leads.
+
+**Mesure de succès** :
+- La DB est prête pour stocker (visitor_id) + associer conversions (RDV, paiement).
+
+### Micro-Bloc 2 : UTM Tracking & Script Loader
+
+**Objectif** :
+- Gérer la capture UTM et la génération du visitor_id via funnel-doctor.js (le loader snippet).
+- Stocker visitor_id (et UTMs) en cookie/localStorage.
+
+**Tâches** :
+- S'assurer que le loader snippet (celui que l'infopreneur colle dans la page) charge funnel-doctor.js.
+- Dans funnel-doctor.js, générer ou retrouver visitor_id, stocker en localStorage.
+- Gérer les attributs (data-fd-site, etc.) pour config.
+
+**Validation/Tests** :
+- Tester en local : on ouvre la landing, devtools → check localStorage['fd_visitor_id'] créé.
+- Optionnel : Vérifier UTMs stockés si ?utm_source=xxx est présent.
+
+**Mesure de succès** :
+- Sur toute landing page où ce snippet est collé, on a un visitor_id stable.
+
+### Micro-Bloc 3 : FunnelStepsEditor & Auth (Déjà Partiellement Fait)
+
+**Objectif** :
+- Stabiliser la page de mapping (drag-and-drop, CRUD) et s'assurer que le mode debug ne l'emporte pas en production.
+- Gérer JWT auth (si le user est authentifié, on persiste en DB).
+
+**Tâches** :
+- Vérifier que la persistance fonctionne (funnel steps en DB).
+- Gérer le fallback debug proprement.
+
+**Validation/Tests** :
+- Vérifier sur Dev : on crée, édite, supprime steps → tout persiste.
+- Pas d'errors 401 en boucle.
+
+**Mesure de succès** :
+- Le funnel mapping est stable, on peut passer à l'étape bridging sans freeze.
+
+### Micro-Bloc 4 : Bridging (Deux Scripts : Loader + Bridging)
+
+#### 4.1 Script "Loader" (Déjà fait)
+- C'est le snippet que l'infopreneur colle (voir Micro-Bloc 2).
+
+#### 4.2 Nouveau Script "Bridging"
+
+**Objectif** :
+- Séparer la logique "au clic sur tel bouton, on récupère visitor_id et on construit l'URL Calendly/iClose (ou Stripe metadata)."
+- Permettre de brancher la page funnel avec des services externes (RDV, paiement).
+
+**Tâches** :
+- Créer un "bridging.js" ou équivalent dans funnel-doctor codebase.
+- Dans ce script :
+  1. Localiser les boutons "Prendre RDV" / "Payer maintenant."
+  2. Au clic, lire visitor_id depuis localStorage.
+  3. Construire l'URL (ex: Calendly → ?utm_source=visitor_id&utm_medium=xxx).
+  4. Gérer l'appel POST vers /create-checkout-session (Stripe) en y mettant metadata.visitor_id.
+- Mettre à jour l'UI "Snippet" dans l'app : pour que l'infopreneur voie 2 scripts à coller :
+  1. Le script loader
+  2. Le bridging snippet
+
+**Validation/Tests** :
+- Front : Sur la landing page, on inclut :
+```html
+<script>...Loader code...</script>
+<script>...Bridging code...</script>
+```
+- Vérifier qu'en local, quand on clique "Calendly" => on atterrit sur ?utm_source=visitor_id&utm_medium=abc123.
+- Vérifier qu'on appelle /api/payments/create-checkout-session avec metadata.visitor_id = abc123.
+
+**Mesure de succès** :
+- Infopreneur peut coller ces 2 snippets, rien d'autre => bridging se fait.
+- On obtient visitor_id dans Calendly (webhook) ou Stripe (metadata).
+
+#### 4.3 Webhooks & Consolidation
+
+**Tâches** :
+1. Stripe : /api/payments/webhook
+   - Récupère metadata.visitor_id, associe la vente à la table leads → fallback email si pas de visitor_id.
+   - Merge si duplicata.
+2. Calendly : "invitee.created" → tracking.utm_source / utm_medium.
+   - S'il = "visitor_id" / "abc123", associer RDV au lead.
+
+**Validation** :
+- On fait un test local + un test staging :
+  - Simuler un RDV Calendly → Sur webhook, on voit visitor_id=abc123.
+  - Simuler un paiement → On voit metadata.visitor_id.
+
+### Micro-Bloc 5 : Analytics & Reporting
+
+**Objectif** :
+- Exploiter la data (leads, events, etc.) pour afficher Taux de Conversion, CA, Show-up rate, etc.
+
+**Tâches** :
+- Endpoint "funnel-analytics" : calculer #leads, #rdv, #ventes.
+- UI de reporting.
+
+**Validation** :
+- On vérifie 95%+ leads mappés (simulations QA).
+- Taux de conversion cohérent.
+
+**Mesure de succès** :
+- L'infopreneur voit un funnel complet (Landing → RDV → Vente), stats par source, etc.
+
+## 10. Récapitulatif des Mesures de Succès Globales
+
+1. **Micro-Bloc 1 (BDD)** : DB stable, tables correctes.
+2. **Micro-Bloc 2 (Loader)** : Sur la landing, visitor_id est généré + UTMs stockés.
+3. **Micro-Bloc 3 (FunnelStepsEditor)** : CRUD stable, fallback debug maîtrisé.
+4. **Micro-Bloc 4 (Bridging)** :
+   - 2 scripts dans l'onglet Snippet : loader + bridging.
+   - Sur Calendly + Stripe, on obtient visitor_id.
+   - Webhooks unifient le lead (≥95% leads).
+5. **Micro-Bloc 5 (Analytics)** : Taux de conversion global + stats par étape + par source.
+
+## 11. Points Clés pour l'Implémentation
+
+- **Deux scripts distincts** :
+  1. Loader snippet (capture UTMs, set visitor_id).
+  2. Bridging snippet (au clic "Calendly"/"Stripe checkout," on ajoute visitor_id dans l'URL/metadata).
+- **Modification de l'UI** : Onglet Snippet dans l'App affichera 2 `<script>` tags distincts pour l'infopreneur.
+- **Critère de succès** : 95% leads consolidés + Taux conversion complet.
+- **Ordre d'implémentation** : BDD → UTM loader → Editor → Bridging → Analytics.
 2. Génère des liens trackés.
 3. Centralise tous les événements (page_view, optin, RDV, achat, etc.).
 4. Affiche un funnel complet (du clic YouTube à la vente).

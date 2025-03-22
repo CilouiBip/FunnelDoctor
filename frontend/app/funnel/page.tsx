@@ -1,7 +1,5 @@
-"use client";
-
 import { redirect } from 'next/navigation';
 
-export default function FunnelRedirect() {
+export default function Funnel() {
   redirect('/dashboard/funnel-mapping');
 }

@@ -82,23 +82,93 @@ export async function signup(email: string, password: string, fullName?: string,
 
 /**
  * Déconnecte l'utilisateur en supprimant le token
+ * @param {string} reason - Raison de la déconnexion (optionnelle)
+ * @param {string} redirectUrl - URL de redirection après déconnexion (optionnelle)
  */
-export function logout(): void {
+export function logout(reason?: string, redirectUrl: string = '/'): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('accessToken');
+    
+    // Si une raison est spécifiée, on la stocke pour l'afficher sur la page de login
+    if (reason) {
+      sessionStorage.setItem('logout_reason', reason);
+    }
   }
-  // Redirection vers la page d'accueil
-  window.location.href = '/';
+  
+  // Redirection avec paramètre de retour si spécifié
+  const returnParam = redirectUrl !== '/' ? `?returnUrl=${encodeURIComponent(redirectUrl)}` : '';
+  window.location.href = `/${returnParam}`;
+}
+
+/**
+ * Décode un token JWT sans vérification
+ */
+export function decodeToken(token: string): any {
+  try {
+    // Décodage basique d'un token JWT (partie payload uniquement)
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('Erreur lors du décodage du token:', error);
+    return null;
+  }
+}
+
+/**
+ * Vérifie si un token est expiré
+ */
+export function isTokenExpired(token: string): boolean {
+  const decodedToken = decodeToken(token);
+  if (!decodedToken || !decodedToken.exp) {
+    console.warn('Token invalide ou sans date d\'expiration');
+    return true;
+  }
+  
+  const currentTime = Math.floor(Date.now() / 1000);
+  const isExpired = decodedToken.exp < currentTime;
+  
+  // Log de débogage pour l'expiration
+  if (isExpired) {
+    const expDate = new Date(decodedToken.exp * 1000);
+    const diffMinutes = Math.floor((expDate.getTime() - Date.now()) / (1000 * 60));
+    console.warn(`Token expiré depuis ${-diffMinutes} minutes (expiration: ${expDate.toLocaleString()})`);
+  }
+  
+  return isExpired;
+}
+
+/**
+ * Récupère des informations sur le token d'accès
+ */
+export function getTokenInfo(): { token: string | null, isValid: boolean, expiration: Date | null, userId: string | null } {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  
+  if (!token) {
+    return { token: null, isValid: false, expiration: null, userId: null };
+  }
+  
+  const decodedToken = decodeToken(token);
+  const isValid = decodedToken && !isTokenExpired(token);
+  const expiration = decodedToken?.exp ? new Date(decodedToken.exp * 1000) : null;
+  const userId = decodedToken?.sub || null;
+  
+  return { token, isValid, expiration, userId };
 }
 
 /**
  * Récupère le token d'accès stocké
  */
 export function getAccessToken(): string | null {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('accessToken');
-  }
-  return null;
+  const tokenInfo = getTokenInfo();
+  console.log(`Auth Service: Token ${tokenInfo.token ? 'présent' : 'absent'}, Valide: ${tokenInfo.isValid}, Expiration: ${tokenInfo.expiration?.toLocaleString() || 'N/A'}, UserId: ${tokenInfo.userId || 'N/A'}`);
+  
+  // Ne retourner le token que s'il est valide
+  return tokenInfo.isValid ? tokenInfo.token : null;
 }
 
 /**
@@ -106,6 +176,38 @@ export function getAccessToken(): string | null {
  */
 export function isAuthenticated(): boolean {
   return !!getAccessToken();
+}
+
+/**
+ * Vérifie si le token est expiré et déconnecte l'utilisateur si c'est le cas
+ * @param {boolean} silent - Si true, ne redirige pas l'utilisateur (utile pour les vérifications en arrière-plan)
+ * @param {string} currentPath - Chemin actuel pour la redirection après reconnexion
+ * @returns {boolean} true si le token est valide, false sinon
+ */
+export function checkTokenAndLogout(silent: boolean = false, currentPath: string = ''): boolean {
+  const tokenInfo = getTokenInfo();
+  
+  // Si pas de token, on considère que l'utilisateur n'est pas connecté
+  if (!tokenInfo.token) {
+    return false;
+  }
+  
+  // Si le token est expiré, déconnecter l'utilisateur
+  if (!tokenInfo.isValid) {
+    console.warn('Token expiré détecté, déconnexion de l\'utilisateur');
+    
+    if (!silent) {
+      logout('Votre session a expiré. Veuillez vous reconnecter.', currentPath);
+    } else {
+      // En mode silencieux, on se contente de supprimer le token sans redirection
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('accessToken');
+      }
+    }
+    return false;
+  }
+  
+  return true;
 }
 
 /**

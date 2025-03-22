@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Touchpoints</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin: 5px; padding: 8px 15px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; max-height: 400px; overflow: auto; }
+        .result { margin-top: 15px; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Test API Touchpoints</h1>
+    
+    <div>
+        <h2>Test 1: Payload minimal</h2>
+        <button id="test1">Exécuter Test 1</button>
+        <div class="result" id="result1"></div>
+    </div>
+
+    <div>
+        <h2>Test 2: Avec event_data comme objet</h2>
+        <button id="test2">Exécuter Test 2</button>
+        <div class="result" id="result2"></div>
+    </div>
+
+    <div>
+        <h2>Test 3: Avec site_id à la racine</h2>
+        <button id="test3">Exécuter Test 3</button>
+        <div class="result" id="result3"></div>
+    </div>
+
+    <div>
+        <h2>Test 4: Payload complet</h2>
+        <button id="test4">Exécuter Test 4</button>
+        <div class="result" id="result4"></div>
+    </div>
+
+    <script>
+        const API_ENDPOINT = 'http://localhost:3001/api/touchpoints';
+
+        // Fonction pour afficher les résultats
+        function displayResult(id, status, data, isError = false) {
+            const resultElement = document.getElementById(`result${id}`);
+            resultElement.innerHTML = `
+                <div class="${isError ? 'error' : 'success'}">
+                    Status: ${status}
+                </div>
+                <pre>${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}</pre>
+            `;
+        }
+
+        // Fonction pour envoyer une requête à l'API
+        async function testTouchpoint(payload, testId) {
+            console.log(`Test ${testId}:`, payload);
+            
+            try {
+                // Afficher le payload dans la console
+                console.log('Payload envoyé:', JSON.stringify(payload, null, 2));
+                
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload),
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                
+                const status = response.status;
+                console.log(`Status: ${status}`);
+                
+                try {
+                    // Tenter de récupérer le corps comme JSON
+                    const data = await response.json();
+                    displayResult(testId, status, data, !response.ok);
+                } catch (parseError) {
+                    // Si pas JSON, récupérer comme texte
+                    const text = await response.text();
+                    displayResult(testId, status, text, !response.ok);
+                }
+            } catch (error) {
+                console.error('Erreur:', error.message);
+                displayResult(testId, 'Erreur', error.message, true);
+            }
+        }
+
+        // Définition des payloads de test
+        const payloads = {
+            test1: {
+                visitor_id: 'test-visitor-' + Date.now(),
+                event_type: 'test_event'
+            },
+            test2: {
+                visitor_id: 'test-visitor-' + Date.now(),
+                event_type: 'test_event',
+                event_data: {
+                    site_id: 'test-site',
+                    utm_params: { utm_source: 'test' }
+                }
+            },
+            test3: {
+                visitor_id: 'test-visitor-' + Date.now(),
+                event_type: 'test_event',
+                site_id: 'test-site'
+            },
+            test4: {
+                visitor_id: 'test-visitor-' + Date.now(),
+                event_type: 'test_event',
+                page_url: 'https://example.com/test',
+                page_title: 'Test Page',
+                user_agent: 'Test Script',
+                referrer: 'https://example.com',
+                ip_address: '127.0.0.1',
+                event_data: {
+                    site_id: 'test-site',
+                    utm_params: { utm_source: 'test' },
+                    custom_field: 'test value'
+                }
+            }
+        };
+
+        // Attacher les événements aux boutons
+        document.getElementById('test1').addEventListener('click', () => testTouchpoint(payloads.test1, 1));
+        document.getElementById('test2').addEventListener('click', () => testTouchpoint(payloads.test2, 2));
+        document.getElementById('test3').addEventListener('click', () => testTouchpoint(payloads.test3, 3));
+        document.getElementById('test4').addEventListener('click', () => testTouchpoint(payloads.test4, 4));
+    </script>
+</body>
+</html>

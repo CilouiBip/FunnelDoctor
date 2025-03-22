@@ -298,6 +298,36 @@ body {
   .funnel-stage-value-change {
     @apply text-xs font-semibold py-0.5 px-2 rounded-full;
   }
+
+  /* Badges pour les statuts */
+  .badge {
+    @apply px-2.5 py-1 text-xs font-semibold rounded-full;
+  }
+  
+  .badge-new {
+    @apply bg-blue-50 text-blue-600 border border-blue-100;
+  }
+  
+  .badge-contacted {
+    @apply bg-yellow-50 text-yellow-600 border border-yellow-100;
+  }
+  
+  .badge-qualified {
+    @apply bg-indigo-50 text-indigo-600 border border-indigo-100;
+  }
+  
+  .badge-customer {
+    @apply bg-green-50 text-green-600 border border-green-100;
+  }
+  
+  .badge-lost {
+    @apply bg-gray-50 text-gray-500 border border-gray-100;
+  }
+  
+  /* Input fields */
+  .input-field {
+    @apply w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
+  }
   
   .funnel-stage-value-change.positive {
     @apply text-success bg-green-50;

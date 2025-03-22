@@ -16,12 +16,45 @@ async function bootstrap() {
     transform: true,
   }));
   
-  // Configure CORS to allow requests from the frontend
+  // Configure CORS to allow requests from any origin for better SaaS flexibility
+  const env = configService.get<string>('NODE_ENV') || 'development';
+  const allowCredentials = configService.get<string>('CORS_ALLOW_CREDENTIALS') === 'true';
+  
+  // Get allowed origins from env var or use defaults
+  let allowedOrigins: string | string[] | RegExp | RegExp[] = '*';
+  
+  // If credentials are required, we can't use '*' and must specify origins
+  if (allowCredentials) {
+    // Get allowed origins from .env or use defaults
+    const originsFromEnv = configService.get<string>('ALLOWED_ORIGINS');
+    
+    if (originsFromEnv) {
+      // Split by comma and trim whitespace
+      allowedOrigins = originsFromEnv.split(',').map(origin => origin.trim());
+    } else {
+      // Fallback to defaults list
+      allowedOrigins = [
+        configService.get<string>('FRONTEND_URL') || 'http://localhost:3000',
+        'https://zenalacarte.kit.com',
+        'https://funnel.doctor.ngrok.app',
+        'https://functions-js.convertkit.com',
+        // More domains can be added to .env instead of here
+      ];
+    }
+  }
+  
+  // Apply CORS configuration
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL') || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true,
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: allowCredentials,
   });
+  
+  // Log CORS configuration
+  const corsLogger = new (await import('@nestjs/common')).Logger('CORS');
+  corsLogger.log(`CORS configured: credentials=${allowCredentials}, origins=${typeof allowedOrigins === 'string' ? allowedOrigins : JSON.stringify(allowedOrigins)}`);
+
+
   
   // Set global prefix for API endpoints
   app.setGlobalPrefix('api');
@@ -30,7 +63,17 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') || 3001;
   
   await app.listen(port);
-  console.log(`Application running on port ${port}`);
+  const logger = new (await import('@nestjs/common')).Logger('Bootstrap');
+  logger.log(`
+
+=== APPLICATION STARTED SUCCESSFULLY ===
+* NestJS server listening on port ${port}
+* Date: ${new Date().toISOString()}
+* Environment: ${process.env.NODE_ENV || 'development'}
+* CORS allowed origin: ${configService.get<string>('FRONTEND_URL') || 'http://localhost:3000'}
+=======================================
+
+`);
 }
 
 bootstrap();
