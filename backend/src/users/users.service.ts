@@ -119,15 +119,25 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
+    console.log(`Recherche utilisateur par email: ${email}`);
+    
+    // Utiliser l'admin client pour contourner les restrictions RLS, comme dans les autres méthodes
     const { data, error } = await this.supabaseService
-      .getClient()
+      .getAdminClient()
       .from('users')
       .select('*')
       .eq('email', email)
       .single();
     
     if (error) {
+      console.error(`Erreur lors de la recherche utilisateur par email ${email}:`, error);
       return null;
+    }
+    
+    if (data) {
+      console.log(`Utilisateur trouvé avec email: ${email}, ID: ${data.id}`);
+    } else {
+      console.log(`Aucun utilisateur trouvé avec email: ${email}`);
     }
     
     return data;
@@ -182,5 +192,48 @@ export class UsersService {
     if (error) {
       throw error;
     }
+  }
+
+  /**
+   * Met à jour le mot de passe d'un utilisateur
+   * @param userId - ID de l'utilisateur
+   * @param passwordHash - Hash du nouveau mot de passe
+   */
+  async updatePassword(userId: string, passwordHash: string): Promise<void> {
+    console.log(`Mise à jour du mot de passe pour l'utilisateur: ${userId}`);
+    
+    const { error } = await this.supabaseService
+      .getAdminClient()
+      .from('users')
+      .update({ password_hash: passwordHash })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error(`Erreur lors de la mise à jour du mot de passe pour l'utilisateur ${userId}:`, error);
+      throw error;
+    }
+    
+    console.log(`Mot de passe mis à jour avec succès pour l'utilisateur: ${userId}`);
+  }
+
+  /**
+   * Marque l'email d'un utilisateur comme vérifié
+   * @param userId - ID de l'utilisateur
+   */
+  async markEmailAsVerified(userId: string): Promise<void> {
+    console.log(`Marquage de l'email comme vérifié pour l'utilisateur: ${userId}`);
+    
+    const { error } = await this.supabaseService
+      .getAdminClient()
+      .from('users')
+      .update({ is_verified: true })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error(`Erreur lors du marquage de l'email comme vérifié pour l'utilisateur ${userId}:`, error);
+      throw error;
+    }
+    
+    console.log(`Email marqué comme vérifié avec succès pour l'utilisateur: ${userId}`);
   }
 }
