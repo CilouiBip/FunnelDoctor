@@ -22,6 +22,19 @@ Notre priorité actuelle est d'implémenter une solution robuste de "Cookie + Pa
 - Assurer un suivi précis et fusionner les identités lorsque les utilisateurs fournissent différents emails à différentes étapes
 - Créer un système modulaire pour cette fonctionnalité, facilitant les améliorations futures
 
+### Progrès réalisés (23/03/2025) :
+
+- ✅ **Intégration Calendly V2** : Résolution des problèmes de Row-Level Security et des erreurs de schéma SQL
+- ✅ **Bridging Webhooks** : Optimisation du traitement des webhooks Calendly pour associer correctement les visitor_id aux leads
+- ✅ **Schéma Supabase** : Mise à jour du schéma de la table `conversion_events` pour stocker les données d'événement et URLs
+- ✅ **Analyse d'impact** : Audit complet des structures de données et triggers pour maintenir la cohérence système
+
+### Prochaines actions :
+
+- ⬜ **Colonnes additionnelles** : Ajout des colonnes `user_id` et `updated_at` à la table `conversion_events`
+- ⬜ **Test intégration complète** : Vérification end-to-end du flow Calendly → Lead → Conversion
+- ⬜ **Reporting** : Développement des vues analytics pour mesurer l'efficacité du bridging
+
 ## 2. Vision d'ensemble du Puzzle Funnel (Option A)
 
 ### 2.1 Approche Option A

@@ -1,13 +1,25 @@
 /**
- * Types d\'u00e9vu00e9nements de conversion
+ * Types d'événements de conversion
+ * Synchronisés avec l'enum PostgreSQL conversion_event_type 
  */
 export enum ConversionEventType {
-  VISIT = 'visit',                // Visite sur le site
-  SIGNUP = 'signup',              // Inscription
-  CONTACT_FORM = 'contact_form',  // Formulaire de contact rempli
-  DEMO_REQUEST = 'demo_request',  // Demande de du00e9mo
-  TRIAL_STARTED = 'trial_started',// Du00e9but d'essai
-  PURCHASE_MADE = 'purchase_made',// Achat effectuu00e9
-  UPSELL = 'upsell',              // Vente additionnelle
-  REFERRAL = 'referral'           // Parrainage
+  // Types d'événements standard
+  PAYMENT = 'PAYMENT',             // Paiement effectué
+  SIGNUP = 'SIGNUP',               // Inscription
+  LOGIN = 'LOGIN',                 // Connexion
+  
+  // Types d'événements liés aux rendez-vous
+  DEMO_SCHEDULED = 'DEMO_SCHEDULED', // RDV planifié
+  DEMO_CANCELED = 'DEMO_CANCELED',   // RDV annulé
+  
+  // Autres types d'événements
+  CONTACT_FORM = 'contact_form',     // Formulaire de contact (format historique)
+  VISIT = 'visit',                   // Visite (format historique)
+  TRIAL_STARTED = 'trial_started',   // Début d'essai (format historique)
+  PURCHASE_MADE = 'purchase_made',   // Achat (format historique)
+  UPSELL = 'upsell',                 // Vente additionnelle (format historique)
+  REFERRAL = 'referral',             // Parrainage (format historique)
+  
+  // Type générique
+  OTHER = 'OTHER'                    // Autre type d'événement
 }

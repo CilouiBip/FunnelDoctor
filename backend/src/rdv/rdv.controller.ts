@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { RdvService } from './rdv.service';
 
-@Controller('api/rdv')
+@Controller('rdv')
 export class RdvController {
   private readonly logger = new Logger(RdvController.name);
 

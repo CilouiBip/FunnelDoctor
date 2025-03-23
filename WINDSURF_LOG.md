@@ -2,6 +2,40 @@
 
 Ce fichier sert à documenter les actions réalisées à chaque étape du développement du projet FunnelDoctor, conformément à la roadmap établie.
 
+## Intégration Calendly et Bridging Visiteur-Lead
+
+### 1. Correction de l'intégration Calendly V2
+
+- ✅ **[23/03/2025]** Résolution des problèmes d'intégration Calendly
+  - Diagnostic des erreurs liées à la Row-Level Security (RLS) lors du traitement des webhooks
+  - Modification du BridgingService pour utiliser l'admin client Supabase lors du traitement des webhooks
+  - Correction de la fonction trigger `record_lead_status_change()` pour utiliser `old_status` au lieu de `previous_status`
+  - Identification et résolution de discordances entre le schéma SQL et les interfaces TypeScript
+  - Audit complet de la structure Supabase pour éviter les impacts sur d'autres fonctionnalités
+
+### 2. Mise à jour du schéma Supabase
+
+- ✅ **[23/03/2025]** Ajout des colonnes manquantes dans la table `conversion_events`
+  - Ajout de la colonne `event_data` (JSONB) pour stocker les données d'événement
+  - Ajout de la colonne `page_url` (TEXT) pour stocker l'URL source
+  - Ajout de la colonne `site_id` (TEXT, DEFAULT 'default') pour l'identification du site
+  - Identification du besoin d'ajouter `user_id` (UUID) et `updated_at` (TIMESTAMPTZ)
+
+### 3. Documentation et analyse
+
+- ✅ **[23/03/2025]** Création d'un rapport d'audit technique détaillé
+  - Analyse des tables et relations existantes
+  - Inventaire des triggers et automatisations
+  - Évaluation des risques et impacts potentiels
+  - Recommandations pour maintenir la cohérence du système
+
+### 4. Bridging avancé (Cookie + Payment/RDV)
+
+- ✅ **[23/03/2025]** Validation du fonctionnement du bridging entre visiteurs et leads
+  - Vérification de l'association visiteur→lead lors des événements Calendly
+  - Confirmation du suivi des conversions via les UTMs dans Calendly
+  - Préparation pour le traitement des cas où l'email initial est incorrect
+
 ## Fonctionnalité Puzzle Funnel
 
 ### 1. Recherche et Planification

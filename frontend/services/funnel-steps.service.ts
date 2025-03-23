@@ -71,9 +71,17 @@ export class FunnelStepsService {
         throw new Error(`Error fetching debug funnel steps: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      console.log('Debug funnel steps fetched:', data);
-      return data;
+      const responseData = await response.json();
+      console.log('Debug funnel steps fetched:', responseData);
+      
+      // Extraire le tableau d'étapes du champ 'data' de la réponse standardisée API
+      if (responseData && responseData.success && Array.isArray(responseData.data)) {
+        console.log(`Extracted ${responseData.data.length} funnel steps from the response`);
+        return responseData.data;
+      } else {
+        console.warn('Invalid response format from debug endpoint', responseData);
+        return [];
+      }
     } catch (error) {
       console.error('Failed to fetch debug funnel steps:', error);
       return [];

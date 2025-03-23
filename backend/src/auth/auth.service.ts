@@ -152,34 +152,63 @@ export class AuthService {
    * @param tokenType - Type de token ('password_reset' ou 'email_verification')
    * @param expiresInHours - Durée de validité du token en heures
    */
-  private async saveToken(
+  private  async saveToken(
     userId: string, 
     token: string, 
     tokenType: 'password_reset' | 'email_verification',
     expiresInHours: number = 1
   ): Promise<void> {
     try {
+      // Log initial pour tracer l'appel de fonction
+      this.logger.log(`Début de saveToken - userId: ${userId}, tokenType: ${tokenType}, expiresInHours: ${expiresInHours}`);
+      
+      // Vérifier que supabaseService est bien initialisé
+      if (!this.supabaseService) {
+        this.logger.error('SupabaseService n\'est pas injecté correctement');
+        throw new InternalServerErrorException('Service de base de données non disponible');
+      }
+      
+      // Log pour vérifier si getAdminClient fonctionne
+      this.logger.log('Tentative d\'obtention du client Supabase admin...');
+      const adminClient = this.supabaseService.getAdminClient();
+      this.logger.log(`Client Supabase obtenu: ${!!adminClient}`);
+      
       // Calculer la date d'expiration
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + expiresInHours);
       
+      // Log des données avant insertion
+      const tokenData = {
+        user_id: userId,
+        token,
+        token_type: tokenType,
+        expires_at: expiresAt.toISOString(),
+      };
+      this.logger.log(`Données du token à insérer: ${JSON.stringify(tokenData)}`);
+      
       // Sauvegarder le token dans la base de données
-      const { error } = await this.supabaseService
+      this.logger.log('Tentative d\'insertion dans la table reset_tokens...');
+      const { data, error } = await this.supabaseService
         .getAdminClient()
         .from('reset_tokens')
-        .insert([{
-          user_id: userId,
-          token,
-          token_type: tokenType,
-          expires_at: expiresAt.toISOString(),
-        }]);
+        .insert([tokenData])
+        .select();
+      
+      // Log du résultat de l'opération
+      if (data) {
+        this.logger.log(`Token sauvegardé avec succès: ${JSON.stringify(data)}`);
+      }
       
       if (error) {
         this.logger.error(`Erreur lors de la sauvegarde du token: ${error.message}`, error);
+        this.logger.error(`Code d'erreur Supabase: ${error.code}, détails: ${JSON.stringify(error.details)}`);
         throw new InternalServerErrorException('Erreur lors de la sauvegarde du token');
       }
     } catch (error) {
-      this.logger.error(`Erreur lors de la sauvegarde du token: ${error.message}`, error.stack);
+      this.logger.error(`Exception lors de la sauvegarde du token: ${error.message}`);
+      if (error.stack) {
+        this.logger.error(`Stack trace: ${error.stack}`);
+      }
       throw new InternalServerErrorException('Erreur lors de la sauvegarde du token');
     }
   }

@@ -13,10 +13,13 @@ export class FunnelProgressService {
    */
   async updateFunnelProgress(params: {
     visitor_id: string;
-    current_stage: 'rdv_scheduled' | 'rdv_completed' | 'payment_succeeded';
+    current_stage: 'rdv_scheduled' | 'rdv_completed' | 'payment_succeeded' | 'rdv_canceled';
     rdv_scheduled_at?: Date | string;
     rdv_completed_at?: Date | string;
+    rdv_canceled_at?: Date | string;
     payment_at?: Date | string;
+    payment_succeeded_at?: Date | string; // Alias pour payment_at
+    payment_data?: any; // Données supplémentaires liées au paiement
     amount?: number;
     product_id?: string;
     user_id: string;
@@ -26,7 +29,10 @@ export class FunnelProgressService {
       current_stage,
       rdv_scheduled_at,
       rdv_completed_at,
+      rdv_canceled_at,
       payment_at,
+      payment_succeeded_at,
+      payment_data,
       amount,
       product_id,
       user_id,
@@ -52,6 +58,31 @@ export class FunnelProgressService {
 
       const currentTime = new Date().toISOString();
 
+      /**
+       * Fonction auxiliaire pour formater les dates en ISO 8601
+       * @param dateInput Date en format Date, string, ou null/undefined
+       * @returns Date au format ISO 8601 ou null
+       */
+      const formatToISODate = (dateInput: Date | string | null | undefined): string | null => {
+        if (!dateInput) return null;
+        try {
+          // Si c'est déjà une chaîne au format ISO, la retourner telle quelle
+          if (typeof dateInput === 'string') {
+            // Vérifier si c'est déjà au format ISO
+            if (dateInput.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+              return dateInput;
+            }
+            // Sinon, parser en Date puis convertir
+            return new Date(dateInput).toISOString();
+          }
+          // C'est un objet Date, le convertir en ISO
+          return dateInput.toISOString();
+        } catch (error) {
+          this.logger.warn(`Erreur de conversion de date: ${dateInput}`, error);
+          return currentTime; // Utiliser la date actuelle en cas d'erreur
+        }
+      };
+
       // Pru00e9parer les donnu00e9es pour la mise u00e0 jour ou l'insertion
       const progressData: any = {
         current_stage,
@@ -61,17 +92,22 @@ export class FunnelProgressService {
 
       // Ajouter les donnu00e9es spu00e9cifiques au stade en fonction du current_stage
       if (current_stage === 'rdv_scheduled' || rdv_scheduled_at) {
-        progressData.rdv_scheduled_at = rdv_scheduled_at || currentTime;
+        progressData.rdv_scheduled_at = formatToISODate(rdv_scheduled_at) || currentTime;
       }
 
       if (current_stage === 'rdv_completed' || rdv_completed_at) {
-        progressData.rdv_completed_at = rdv_completed_at || currentTime;
+        progressData.rdv_completed_at = formatToISODate(rdv_completed_at) || currentTime;
       }
 
-      if (current_stage === 'payment_succeeded' || payment_at) {
-        progressData.payment_at = payment_at || currentTime;
+      if (current_stage === 'rdv_canceled' || rdv_canceled_at) {
+        progressData.rdv_canceled_at = formatToISODate(rdv_canceled_at) || currentTime;
+      }
+
+      if (current_stage === 'payment_succeeded' || payment_at || payment_succeeded_at) {
+        progressData.payment_at = formatToISODate(payment_succeeded_at) || formatToISODate(payment_at) || currentTime;
         if (amount) progressData.amount = amount;
         if (product_id) progressData.product_id = product_id;
+        if (payment_data) progressData.payment_data = payment_data;
       }
 
       let result;

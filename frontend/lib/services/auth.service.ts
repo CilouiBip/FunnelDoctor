@@ -101,6 +101,44 @@ export function logout(reason?: string, redirectUrl: string = '/'): void {
 }
 
 /**
+ * Demande un lien de réinitialisation de mot de passe pour une adresse email
+ */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.message || 'Erreur lors de la demande de réinitialisation');
+  }
+  
+  return data;
+}
+
+/**
+ * Réinitialise le mot de passe avec un token valide
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_URL}/api/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password: newPassword })
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.message || 'Erreur lors de la réinitialisation du mot de passe');
+  }
+  
+  return data;
+}
+
+/**
  * Décode un token JWT sans vérification
  */
 export function decodeToken(token: string): any {

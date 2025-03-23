@@ -22,7 +22,7 @@ class CreateCheckoutSessionDto {
   metadata?: Record<string, string>;
 }
 
-@Controller('api/payments')
+@Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 

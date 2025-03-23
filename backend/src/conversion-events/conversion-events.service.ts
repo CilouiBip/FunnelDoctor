@@ -42,10 +42,13 @@ export class ConversionEventsService {
       id: data.id,
       leadId: data.lead_id,
       eventType: data.event_type,
+      eventName: data.event_name || 'generic_event', // Champ obligatoire normalisé
       eventData: data.event_data,
       amount: data.amount,
       userId: data.user_id,
-      createdAt: new Date(data.created_at)
+      pageUrl: data.page_url,
+      createdAt: new Date(data.created_at),
+      updatedAt: data.updated_at ? new Date(data.updated_at) : new Date(data.created_at)
     };
 
     // Gestion des transitions automatiques de statut
@@ -75,10 +78,13 @@ export class ConversionEventsService {
       id: item.id,
       leadId: item.lead_id,
       eventType: item.event_type,
+      eventName: item.event_name || 'generic_event', // Champ obligatoire normalisé
       eventData: item.event_data,
       amount: item.amount,
       userId: item.user_id,
-      createdAt: new Date(item.created_at)
+      pageUrl: item.page_url,
+      createdAt: new Date(item.created_at),
+      updatedAt: item.updated_at ? new Date(item.updated_at) : new Date(item.created_at)
     }));
   }
   
@@ -142,8 +148,8 @@ export class ConversionEventsService {
         }
         break;
       
-      case ConversionEventType.DEMO_REQUEST:
-        // Transition automatique vers "qualified" si une du00e9mo est demandu00e9e
+      case ConversionEventType.DEMO_SCHEDULED:
+        // Transition automatique vers "qualified" si un rendez-vous est programmé
         try {
           await this.leadStatusService.changeLeadStatus(
             userId,

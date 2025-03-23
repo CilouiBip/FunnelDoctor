@@ -3,7 +3,7 @@ import { ConversionEventsService } from './conversion-events.service';
 import { CreateConversionEventDto } from './dto/create-conversion-event.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@Controller('api/conversion-events')
+@Controller('conversion-events')
 @UseGuards(JwtAuthGuard)
 export class ConversionEventsController {
   constructor(private readonly conversionEventsService: ConversionEventsService) {}

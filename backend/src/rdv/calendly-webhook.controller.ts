@@ -13,7 +13,7 @@ import { RdvService } from './rdv.service';
  * Contrôleur dédié aux webhooks Calendly
  * Ce contrôleur utilise un chemin spécifique pour éviter le doublement du préfixe /api/
  */
-@Controller({ path: 'api/rdv', host: undefined })
+@Controller({ path: 'rdv', host: undefined })
 export class CalendlyWebhookController {
   private readonly logger = new Logger(CalendlyWebhookController.name);
 

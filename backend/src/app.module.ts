@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
@@ -17,7 +17,10 @@ import { BridgingModule } from './bridging/bridging.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RdvModule } from './rdv/rdv.module';
 import { FunnelProgressModule } from './funnel-progress/funnel-progress.module';
+import { CalendlyV2Module } from './calendly-v2/calendly-v2.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { JwtExtractionMiddleware } from './common/middleware/jwt-extraction.middleware';
 import { join } from 'path';
 
 @Module({
@@ -38,6 +41,8 @@ import { join } from 'path';
     PaymentsModule,
     RdvModule,
     FunnelProgressModule,
+    CalendlyV2Module,
+    AnalyticsModule,
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
       serveRoot: '/',
@@ -47,4 +52,19 @@ import { join } from 'path';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Configuration des middlewares globaux
+   */
+  configure(consumer: MiddlewareConsumer) {
+    // Appliquer le middleware d'extraction JWT à toutes les routes sauf celles d'authentification
+    consumer
+      .apply(JwtExtractionMiddleware)
+      .exclude(
+        { path: 'api/auth/login', method: RequestMethod.POST },
+        { path: 'api/auth/signup', method: RequestMethod.POST },
+        { path: 'api/health', method: RequestMethod.GET }
+      )
+      .forRoutes('*');
+  }
+}

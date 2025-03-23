@@ -1,14 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { CreateVisitorDto } from './dto/create-visitor.dto';
 import { Visitor } from './interfaces/visitor.interface';
-import { LeadsService } from '../leads/leads.service';
 
 @Injectable()
 export class VisitorsService {
+  private readonly logger = new Logger(VisitorsService.name);
+
   constructor(
-    private readonly supabaseService: SupabaseService,
-    private readonly leadsService: LeadsService
+    private readonly supabaseService: SupabaseService
   ) {}
 
   /**
