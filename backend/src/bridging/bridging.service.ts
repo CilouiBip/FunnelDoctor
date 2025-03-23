@@ -30,7 +30,8 @@ export class BridgingService {
       `Tentative d'association visitor_id=${visitor_id} u00e0 email=${email} (user_id=${user_id})`
     );
 
-    const supabase = this.supabaseService.getClient();
+    // Utilisation du client admin pour contourner les RLS lors des webhooks
+    const supabase = this.supabaseService.getAdminClient();
 
     try {
       // 1. Chercher un lead existant avec cet email pour cet utilisateur
@@ -143,19 +144,41 @@ export class BridgingService {
         this.logger.log(`Nouveau visitor cru00e9u00e9 avec id=${visitorDbId} et lead_id=${leadId}`);
       }
 
-      // 4. Cru00e9er un u00e9vu00e9nement de conversion
-      const { error: eventError } = await supabase.from('conversion_events').insert({
-        visitor_id: visitorDbId,
-        lead_id: leadId,
-        event_type: source === 'calendly' ? 'RDV' : 'PAYMENT',
-        event_data: metadata || {},
-        page_url: metadata?.page_url || null,
+      // 4. Créer un événement de conversion
+      const sourceType = source === 'calendly' ? 'rdv' : 'payment';
+      const eventName = `${sourceType}_${source === 'calendly' ? 'scheduled' : 'received'}`;
+      
+      this.logger.log(`Création de l'événement de conversion: ${eventName} pour lead_id=${leadId}`);
+      
+      // Récupérer les UTMs et les placer dans event_data plutôt que comme colonnes séparées
+      const utmData = {
         utm_source: metadata?.utm_source || null,
         utm_medium: metadata?.utm_medium || null,
         utm_campaign: metadata?.utm_campaign || null,
         utm_term: metadata?.utm_term || null,
-        utm_content: metadata?.utm_content || null,
+        utm_content: metadata?.utm_content || null
+      };
+
+      const { error: eventError } = await supabase.from('conversion_events').insert({
+        visitor_id: visitorDbId,
+        lead_id: leadId,
+        // Utiliser event_name (obligatoire) au format normalisé
+        event_name: eventName,
+        // Conserver event_type pour compatibilité ascendante
+        event_type: source === 'calendly' ? 'RDV' : 'PAYMENT',
+        // Données JSON structurées incluant maintenant les UTMs
+        event_data: {
+          ...metadata || {},
+          source: source,
+          conversion_type: sourceType,
+          value: value || 0,
+          ...utmData  // Inclusion des UTMs dans event_data plutôt qu'en colonnes séparées
+        },
+        // Informations de page
+        page_url: metadata?.page_url || null,
+        // Identification du site
         site_id: metadata?.site_id || 'default',
+        // user_id obligatoire (remplace created_by)
         user_id,
       });
 
@@ -183,7 +206,8 @@ export class BridgingService {
    * Utile pour pru00e9-remplir des formulaires ou personnaliser l'expu00e9rience
    */
   async findLeadByVisitorId(visitor_id: string) {
-    const supabase = this.supabaseService.getClient();
+    // Utilisation du client admin pour contourner les RLS lors des webhooks
+    const supabase = this.supabaseService.getAdminClient();
 
     try {
       // 1. Trouver le visitor_id dans la table visitors
@@ -242,7 +266,8 @@ export class BridgingService {
     const { source_lead_id, target_lead_id, reason } = params;
     this.logger.log(`Fusion des leads source=${source_lead_id} et target=${target_lead_id}`);
 
-    const supabase = this.supabaseService.getClient();
+    // Utilisation du client admin pour contourner les RLS lors des webhooks
+    const supabase = this.supabaseService.getAdminClient();
 
     try {
       // 1. Vu00e9rifier que les deux leads existent
