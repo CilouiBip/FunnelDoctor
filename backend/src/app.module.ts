@@ -19,9 +19,12 @@ import { RdvModule } from './rdv/rdv.module';
 import { FunnelProgressModule } from './funnel-progress/funnel-progress.module';
 import { CalendlyV2Module } from './calendly-v2/calendly-v2.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { DebugModule } from './debug/debug.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { JwtExtractionMiddleware } from './common/middleware/jwt-extraction.middleware';
 import { join } from 'path';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -43,6 +46,9 @@ import { join } from 'path';
     FunnelProgressModule,
     CalendlyV2Module,
     AnalyticsModule,
+    WebhooksModule,
+    IntegrationsModule,
+    DebugModule.register(),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
       serveRoot: '/',
@@ -63,7 +69,8 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'api/auth/login', method: RequestMethod.POST },
         { path: 'api/auth/signup', method: RequestMethod.POST },
-        { path: 'api/health', method: RequestMethod.GET }
+        { path: 'api/health', method: RequestMethod.GET },
+        { path: 'api/debug/*', method: RequestMethod.GET }
       )
       .forRoutes('*');
   }
