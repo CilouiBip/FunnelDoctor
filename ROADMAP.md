@@ -24,16 +24,37 @@ Notre priorité actuelle est d'implémenter une solution robuste de "Cookie + Pa
 
 ### Progrès réalisés (23/03/2025) :
 
+#### Authentification et E-mails
+- ✅ **Système de vérification d'email** : Implémentation complète avec tokens, table `reset_tokens`, et mise à jour des statuts utilisateurs
+- ✅ **Réinitialisation de mot de passe** : Endpoints fonctionnels (`/auth/forgot-password`, `/auth/reset-password`) avec mesures de sécurité
+- ✅ **Service d'emails modulaire** : Architecture prête pour SendGrid/SMTP en production, simulation en développement
+
+#### Intégration Calendly et Bridging
 - ✅ **Intégration Calendly V2** : Résolution des problèmes de Row-Level Security et des erreurs de schéma SQL
 - ✅ **Bridging Webhooks** : Optimisation du traitement des webhooks Calendly pour associer correctement les visitor_id aux leads
 - ✅ **Schéma Supabase** : Mise à jour du schéma de la table `conversion_events` pour stocker les données d'événement et URLs
-- ✅ **Analyse d'impact** : Audit complet des structures de données et triggers pour maintenir la cohérence système
+- ✅ **Analyse d'impact** : Audit complet des structures de données existantes
 
-### Prochaines actions :
+#### Intégration YouTube OAuth et Bridging Multi-Email
+- ✅ **Configuration Google Cloud** : Création du projet, configuration OAuth, activation APIs YouTube
+- ✅ **Variables d'environnement** : Ajout des variables pour l'intégration YouTube dans le fichier .env
+- 🔄 **Implémentation des services Day 2** : EncryptionService, IntegrationService, LeadMatchingService
+- 🔄 **Implémentation des services Day 3** : YouTubeAuthService, YouTubeController, YouTubeTokenRefreshService
+- 🔄 **Structure multi-email** : Ajout de `secondary_emails` aux leads et création d'endpoints pour capturer les emails secondairest triggers pour maintenir la cohérence système
 
-- ⬜ **Colonnes additionnelles** : Ajout des colonnes `user_id` et `updated_at` à la table `conversion_events`
-- ⬜ **Test intégration complète** : Vérification end-to-end du flow Calendly → Lead → Conversion
-- ⬜ **Reporting** : Développement des vues analytics pour mesurer l'efficacité du bridging
+### Prochaines actions (alignées avec le plan du CTO) :
+
+#### Phase A : Vérification du Flow Complet (UTM → Calendly → Stripe)
+- ⬜ **Flow complet UTM → Landing** : Vérifier la capture des paramètres UTM et la génération du visitor_id
+- ⬜ **Flow Landing → Calendly** : Tester le bridging des liens Calendly avec visitor_id
+- ⬜ **Flow Calendly → Stripe** : Implémenter l'association visiteur-paiement via webhook Stripe
+- ⬜ **Test intégration complète** : Valider le flux entier de l'UTM jusqu'au paiement
+- ⬜ **Dashboard analytics** : Visualiser les taux de conversion à chaque étape du funnel
+
+#### Phase B : Intégration OAuth YouTube (future)
+- ⬜ **Service OAuth** : Développer les endpoints d'autorisation et callback pour YouTube
+- ⬜ **Récupération des métriques** : Intégrer l'API YouTube Data pour les statistiques de vidéos
+- ⬜ **Analytics croisés** : Relier les performances des vidéos aux conversions via UTMs
 
 ## 2. Vision d'ensemble du Puzzle Funnel (Option A)
 

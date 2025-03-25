@@ -2,6 +2,24 @@
 
 Ce fichier sert à documenter les actions réalisées à chaque étape du développement du projet FunnelDoctor, conformément à la roadmap établie.
 
+## Intégration YouTube OAuth et Bridging Multi-Email
+
+### 1. Configuration Google Cloud et Variables d'Environnement
+
+- ✅ **[24/03/2025]** Mise en place de l'infrastructure OAuth pour YouTube
+  - Création du projet Google Cloud pour les APIs YouTube
+  - Configuration de l'écran de consentement OAuth en mode Testing
+  - Génération des identifiants OAuth (Client ID et Client Secret)
+  - Configuration des variables d'environnement (`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, etc.)
+  - Préparation de l'environnement ngrok pour les tests de callback OAuth
+
+### 2. Préparation du Bridging Multi-Email
+
+- 🔄 **[24/03/2025]** Planification de l'implémentation du multi-email bridging
+  - Conception du service `LeadMatchingService` pour la consolidation des emails
+  - Définition de la structure pour stocker les emails secondaires dans Supabase
+  - Élaboration de la stratégie de propagation des visitor_id dans les liens externes
+
 ## Intégration Calendly et Bridging Visiteur-Lead
 
 ### 1. Correction de l'intégration Calendly V2
@@ -35,6 +53,31 @@ Ce fichier sert à documenter les actions réalisées à chaque étape du dével
   - Vérification de l'association visiteur→lead lors des événements Calendly
   - Confirmation du suivi des conversions via les UTMs dans Calendly
   - Préparation pour le traitement des cas où l'email initial est incorrect
+
+## Système d'Authentification et Emails
+
+### 1. Mise en place de la vérification d'email
+
+- ✅ **[23/03/2025]** Développement du système de vérification d'email
+  - Création de la table `reset_tokens` pour stocker les tokens de vérification et réinitialisation
+  - Implémentation de l'endpoint `/auth/verify-email` et tests de fonctionnement
+  - Mise en place des colonnes `is_verified` et `verified_at` dans la table `users`
+  - Tests complets du flux : génération de token → envoi d'email → vérification
+
+### 2. Fonctionnalité de réinitialisation de mot de passe
+
+- ✅ **[23/03/2025]** Implémentation du système de réinitialisation de mot de passe
+  - Développement de l'endpoint `/auth/forgot-password` pour générer des tokens
+  - Création de l'endpoint `/auth/reset-password` pour traiter les demandes de réinitialisation
+  - Ajout de mesures de sécurité : expiration des tokens, validation unique, protection contre les attaques par force brute
+
+### 3. Service d'emails modulaire
+
+- ✅ **[23/03/2025]** Conception d'un service d'emails abstrait et extensible
+  - Implémentation d'une interface commune pour différents fournisseurs d'email (console, SendGrid, SMTP)
+  - Mode développement avec simulation d'envoi d'emails dans les logs
+  - Préparation pour l'intégration d'un fournisseur réel (SendGrid) en production
+  - Configuration par variables d'environnement pour faciliter la transition dev → prod
 
 ## Fonctionnalité Puzzle Funnel
 

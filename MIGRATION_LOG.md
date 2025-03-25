@@ -8,10 +8,30 @@ La Phase 2 se concentre sur la normalisation complète de la base de données, a
 Cette normalisation implique une restructuration des tables existantes, l'ajout de nouvelles tables pour normaliser les données,
 la migration des données existantes et l'ajout de contraintes pour garantir l'intégrité des données.
 
+### Migrations d'authentification et vérification d'email (23/03/2025)
+
+La fonctionnalité d'authentification avancée a nécessité plusieurs modifications de schéma dans la base de données :
+
+1. **Création de la table `reset_tokens`** - Stockage sécurisé des tokens pour:
+   - Réinitialisation de mot de passe
+   - Vérification d'email
+   - Structure avec expiration et mécanisme anti-réutilisation
+
+2. **Ajout des champs de vérification d'email à `users`** :
+   - `is_verified` (BOOLEAN, défaut FALSE)
+   - `verified_at` (TIMESTAMP WITH TIME ZONE)
+
+3. **Optimisation des requêtes** :
+   - Ajout d'index sur `reset_tokens` (token, user_id)
+   - Amélioration des performances des requêtes d'authentification
+
+Ces modifications permettent un système d'authentification complet avec vérification d'email en deux étapes et réinitialisation de mot de passe sécurisée.
+
 ### Scripts de migration
 
 | Timestamp | Nom | Description |
-|-----------|-----|-------------|
+|-----------|-----|--------------|
+| 20250323000000 | add_email_verification_fields.sql | Création de la table reset_tokens et ajout des champs de vérification d'email |
 | 20250324000000 | phase2_fixes.sql | Ajout de DEMO_CANCELED à l'enum conversion_event_type et de rdv_canceled_at à funnel_progress |
 | 20250325000000 | phase2_preparation.sql | Documentation des tables et colonnes, ajout d'index pour optimiser les performances |
 | 20250326000000 | normalize_types.sql | Standardisation des types et enums, ajout de catégories pour les événements |
