@@ -5,6 +5,9 @@
 // URL de base de l'API
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+// Clé de stockage du token dans le localStorage
+const TOKEN_STORAGE_KEY = 'accessToken';
+
 /**
  * Interface pour les données d'utilisateur
  */
@@ -29,24 +32,106 @@ export interface AuthResponse {
  * Connecte un utilisateur avec son email et mot de passe
  */
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  });
+  console.log('[FRONTEND-LOGIN] Début de l\'appel login avec:', email);
   
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(data.message || 'Erreur lors de la connexion');
+  try {
+    // Log la requête qui va être envoyée
+    console.log(`[FRONTEND-LOGIN] API URL utilisée: ${API_URL}/api/auth/login`);
+    
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json' // S'assurer que le serveur renvoie du JSON
+      },
+      body: JSON.stringify({ email, password }),
+      credentials: 'include' // Gérer les cookies CORS si nécessaire
+    });
+    
+    console.log('[FRONTEND-LOGIN] Statut de la réponse:', response.status, response.statusText);
+    console.log('[FRONTEND-LOGIN] Headers de la réponse:', {
+      contentType: response.headers.get('Content-Type'),
+      contentLength: response.headers.get('Content-Length')
+    });
+    
+    // Vérifier que la réponse contient du JSON valide
+    if (!response.headers.get('Content-Type')?.includes('application/json')) {
+      console.warn('[FRONTEND-LOGIN] ATTENTION: La réponse n\'est pas au format JSON');
+    }
+    
+    // Cloner la réponse pour pouvoir l'utiliser deux fois (en texte brut et en JSON)
+    const responseClone = response.clone();
+    
+    // Récupérer le texte brut de la réponse pour diagnostic
+    const rawText = await responseClone.text();
+    console.log('[FRONTEND-LOGIN] Réponse brute du serveur:', rawText);
+    
+    // Parser le JSON avec gestion d'erreur
+    let data;
+    try {
+      data = JSON.parse(rawText);
+      // Le log demandé de la structure complète de l'objet
+      console.log('[FRONTEND-LOGIN] Raw data received from /api/auth/login:', JSON.stringify(data));
+      console.log('[FRONTEND-LOGIN] Structure de la réponse:', {
+        keys: Object.keys(data),
+        hasData: 'data' in data,
+        dataKeys: data?.data ? Object.keys(data.data) : [],
+        hasAccessToken: data?.data && 'access_token' in data.data,
+        hasUser: data?.data && 'user' in data.data
+      });
+    } catch (parseError) {
+      console.error('[FRONTEND-LOGIN] Erreur de parsing JSON:', parseError);
+      throw new Error('Erreur lors du parsing de la réponse JSON');
+    }
+    
+    if (!response.ok) {
+      console.error('[FRONTEND-LOGIN] Erreur API:', data.message || 'Erreur inconnue');
+      throw new Error(data.message || 'Erreur lors de la connexion');
+    }
+    
+    // Logs de diagnostic pour le token
+    // Vérifier la présence du token de manière sécurisée en tenant compte de la structure enveloppée
+    const hasToken = data?.data && typeof data.data === 'object' && 'access_token' in data.data && data.data.access_token;
+    console.log('[FRONTEND-LOGIN] Détection du token:', hasToken ? 'PRÉSENT' : 'ABSENT');
+    
+    if (hasToken) {
+      console.log('[FRONTEND-LOGIN] Token reçu:', data.data.access_token.substring(0, 15) + '...');
+      console.log('[FRONTEND-LOGIN] Type du token:', typeof data.data.access_token);
+      console.log('[FRONTEND-LOGIN] Longueur du token:', data.data.access_token.length);
+    } else {
+      console.warn('[FRONTEND-LOGIN] Token ABSENT dans la réponse!');
+    }
+    
+    // Stocker le token dans le localStorage
+    if (typeof window !== 'undefined') {
+      // Utiliser une valeur par défaut sécurisée
+      const tokenToStore = hasToken ? data.data.access_token : '';
+      localStorage.setItem(TOKEN_STORAGE_KEY, tokenToStore);
+      
+      // Vérifier que le token est bien stocké dans localStorage
+      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      console.log('[FRONTEND-LOGIN] Token stocké dans localStorage:', storedToken ? `${storedToken.substring(0, 15)}...` : 'ABSENT');
+    }
+    
+    // Si l'API ne renvoie pas la structure attendue, reconstruire l'objet pour éviter des erreurs
+    // C'est une mesure temporaire pour éviter des plantages ultérieurs
+    if (!hasToken || !data?.data?.user) {
+      console.warn('[FRONTEND-LOGIN] Reconstruction de l\'objet de réponse car structure invalide');
+      return {
+        access_token: hasToken ? data.data.access_token : '',
+        user: data?.data?.user || { id: '', email: '', createdAt: new Date() }
+      };
+    }
+    
+    // Retourner la structure attendue par le reste de l'application
+    return {
+      access_token: data.data.access_token,
+      user: data.data.user
+    };
+  } catch (error) {
+    console.error('[FRONTEND-LOGIN] Erreur globale:', error);
+    throw error;
   }
-  
-  // Stocker le token dans le localStorage
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('accessToken', data.access_token);
-  }
-  
-  return data;
 }
 
 /**
@@ -74,7 +159,7 @@ export async function signup(email: string, password: string, fullName?: string,
   
   // Stocker le token dans le localStorage
   if (typeof window !== 'undefined') {
-    localStorage.setItem('accessToken', data.access_token);
+    localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
   }
   
   return data;
@@ -87,12 +172,14 @@ export async function signup(email: string, password: string, fullName?: string,
  */
 export function logout(reason?: string, redirectUrl: string = '/'): void {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('accessToken');
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     
     // Si une raison est spécifiée, on la stocke pour l'afficher sur la page de login
     if (reason) {
       sessionStorage.setItem('logout_reason', reason);
     }
+    
+    console.log('[AUTH] Session terminée, token supprimé');
   }
   
   // Redirection avec paramètre de retour si spécifié
@@ -140,11 +227,26 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
 /**
  * Décode un token JWT sans vérification
+ * @param token Token JWT à décoder, peut être null ou undefined
+ * @returns Le payload décodé ou null si le token est invalide
  */
-export function decodeToken(token: string): any {
+export function decodeToken(token: string | null | undefined): any {
+  // Vérifier que le token existe et est une chaîne de caractères non vide
+  if (!token) {
+    console.warn('[AUTH] Tentative de décodage d\'un token null ou undefined');
+    return null;
+  }
+  
   try {
+    // Vérifier que le token a le bon format (au moins 3 parties séparées par des points)
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      console.warn('[AUTH] Format de token invalide:', token.substring(0, 15) + '...');
+      return null;
+    }
+    
     // Décodage basique d'un token JWT (partie payload uniquement)
-    const base64Url = token.split('.')[1];
+    const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => {
       return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
@@ -152,18 +254,26 @@ export function decodeToken(token: string): any {
 
     return JSON.parse(jsonPayload);
   } catch (error) {
-    console.error('Erreur lors du décodage du token:', error);
+    console.error('[AUTH] Erreur lors du décodage du token:', error);
     return null;
   }
 }
 
 /**
  * Vérifie si un token est expiré
+ * @param token Token JWT à vérifier, peut être null ou undefined
+ * @returns true si le token est expiré ou invalide, false sinon
  */
-export function isTokenExpired(token: string): boolean {
+export function isTokenExpired(token: string | null | undefined): boolean {
+  // Si le token n'existe pas, il est considéré comme expiré
+  if (!token) {
+    console.warn('[AUTH] isTokenExpired: Token null ou undefined');
+    return true;
+  }
+  
   const decodedToken = decodeToken(token);
   if (!decodedToken || !decodedToken.exp) {
-    console.warn('Token invalide ou sans date d\'expiration');
+    console.warn('[AUTH] Token invalide ou sans date d\'expiration');
     return true;
   }
   
@@ -182,18 +292,40 @@ export function isTokenExpired(token: string): boolean {
 
 /**
  * Récupère des informations sur le token d'accès
+ * @returns Objet contenant le token et ses informations décodées
  */
 export function getTokenInfo(): { token: string | null, isValid: boolean, expiration: Date | null, userId: string | null } {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  
-  if (!token) {
+  // Si code exécuté côté serveur, retourner valeurs par défaut
+  if (typeof window === 'undefined') {
+    console.warn('[AUTH] getTokenInfo: Exécution côté serveur, pas de localStorage disponible');
     return { token: null, isValid: false, expiration: null, userId: null };
   }
+
+  // Récupérer le token depuis localStorage
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   
+  // Log de diagnostic pour comprendre le problème de token undefined
+  console.log(`[AUTH] Token dans localStorage: ${token ? 'présent' : 'absent'}`);
+  if (token) {
+    console.log(`[AUTH] Début du token: ${token.substring(0, 15)}...`);
+  } else {
+    console.log('[AUTH] Clés disponibles dans localStorage:', Object.keys(localStorage));
+  }
+
+  // Si pas de token, retourner valeurs par défaut
+  if (!token) {
+    console.warn('[AUTH] getTokenInfo: Aucun token trouvé dans localStorage');
+    return { token: null, isValid: false, expiration: null, userId: null };
+  }
+
+  // Décoder le token et vérifier sa validité
   const decodedToken = decodeToken(token);
   const isValid = decodedToken && !isTokenExpired(token);
   const expiration = decodedToken?.exp ? new Date(decodedToken.exp * 1000) : null;
   const userId = decodedToken?.sub || null;
+  
+  // Log d'information sur le token décodé
+  console.log(`[AUTH] Token info - Valid: ${isValid}, Expiration: ${expiration?.toLocaleString() || 'N/A'}, UserId: ${userId || 'N/A'}`);
   
   return { token, isValid, expiration, userId };
 }
@@ -213,7 +345,61 @@ export function getAccessToken(): string | null {
  * Vérifie si l'utilisateur est authentifié
  */
 export function isAuthenticated(): boolean {
-  return !!getAccessToken();
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!token) return false;
+    
+    const isValid = !isTokenExpired(token);
+    console.log(`[AUTH] Vérification de l'authentification - Token présent: ${!!token}, Token valide: ${isValid}`);
+    return isValid;
+  }
+  return false;
+}
+
+/**
+ * Stocke un token d'accès dans le localStorage
+ * Cette fonction est particulièrement utile après un flux OAuth
+ * @param token Le token JWT à stocker
+ */
+export function setAccessToken(token: string): void {
+  if (typeof window !== 'undefined' && token) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    console.log('[AUTH] Token stocké manuellement dans localStorage');
+  }
+}
+
+/**
+ * Extrait un token JWT du hash de l'URL (utilisé après redirection OAuth)
+ * @returns Le token extrait ou null si absent
+ */
+export function extractTokenFromUrlHash(): string | null {
+  if (typeof window !== 'undefined' && window.location.hash) {
+    try {
+      const hash = window.location.hash.substring(1); // Enlever le # initial
+      const params = new URLSearchParams(hash);
+      const token = params.get('token');
+      
+      if (token) {
+        console.log('[AUTH] Token extrait du hash avec succès');
+        return token;
+      }
+    } catch (error) {
+      console.error('[AUTH] Erreur lors de l\'extraction du token du hash:', error);
+    }
+  }
+  return null;
+}
+
+/**
+ * Vérifie si le token a été rafraîchi après une redirection OAuth
+ * @returns true si c'est un retour d'OAuth avec statut success
+ */
+export function isOAuthRedirect(): boolean {
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('status') === 'success';
+  }
+  return false;
 }
 
 /**
@@ -227,12 +413,13 @@ export function checkTokenAndLogout(silent: boolean = false, currentPath: string
   
   // Si pas de token, on considère que l'utilisateur n'est pas connecté
   if (!tokenInfo.token) {
+    console.log('[AUTH] Token non trouvé, redirection vers login nécessaire');
     return false;
   }
   
   // Si le token est expiré, déconnecter l'utilisateur
   if (!tokenInfo.isValid) {
-    console.warn('Token expiré détecté, déconnexion de l\'utilisateur');
+    console.warn('[AUTH] Token expiré détecté, déconnexion de l\'utilisateur');
     
     if (!silent) {
       logout('Votre session a expiré. Veuillez vous reconnecter.', currentPath);

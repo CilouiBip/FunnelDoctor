@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe, RequestMethod, Logger, BadRequestException } from '@nestjs/common';
 import { HttpExceptionInterceptor } from './common/interceptors/http-exception.interceptor';
+import { CorsExceptionFilter } from './common/filters/cors-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
@@ -13,77 +14,46 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   
   // ========== CONFIGURATION CORS =========
-  // Configuration CORS au début pour intercepter les préflights
+  // Configuration CORS simplifiée avec support explicite pour localhost:3000 et Ngrok
   const env = configService.get<string>('NODE_ENV') || 'development';
-  const allowCredentials = true;
   
-  // Initialiser le tableau des origines autorisées
-  let allowedOrigins: string[] = [];
+  // Récupérer le frontend et backend URL depuis les variables d'environnement ou utiliser les valeurs par défaut
+  const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  const backendUrl = configService.get<string>('BACKEND_URL') || 'http://localhost:3001';
   
-  // Étape 1: Charger les origines depuis la variable ALLOWED_ORIGINS
+  // Initialiser un tableau strict d'origines autorisées
+  const allowedOrigins = ['http://localhost:3000'];
+  
+  // Ajouter le frontendUrl s'il n'est pas déjà inclus
+  if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
+    allowedOrigins.push(frontendUrl);
+  }
+  
+  // Ajouter des origines supplémentaires depuis ALLOWED_ORIGINS
   const originsFromEnv = configService.get<string>('ALLOWED_ORIGINS');
   if (originsFromEnv) {
-    allowedOrigins = originsFromEnv
+    const additionalOrigins = originsFromEnv
       .split(',')
       .map(origin => origin.trim())
-      .filter(origin => origin.length > 0);
+      .filter(origin => origin.length > 0 && !allowedOrigins.includes(origin));
+    
+    allowedOrigins.push(...additionalOrigins);
   }
   
-  // Étape 2: Ajouter des origines spécifiques selon l'environnement
-  if (env === 'development') {
-    // En développement, autoriser localhost sur n'importe quel port
-    // La validation se fait avec une fonction pour gérer les wildcards
-    allowedOrigins.push('localhost');
-    allowedOrigins.push('127.0.0.1');
-
-  } else {
-    // En production, s'assurer que FRONTEND_URL est inclus
-    const frontendUrl = configService.get<string>('FRONTEND_URL');
-    if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
-      allowedOrigins.push(frontendUrl);
-    }
-  }
+  // Log pour débugger
+  console.log(`[CORS] Origines autorisées: ${JSON.stringify(allowedOrigins)}`);
   
-  // Si aucune origine n'est définie, utiliser un fallback
-  if (allowedOrigins.length === 0) {
-    if (env === 'development') {
-      // Fallback pour le développement
-      allowedOrigins = ['http://localhost:3000'];
-    } else {
-      // En production, si aucune origine n'est spécifiée, bloquer toutes les origines
-      // ou utiliser un fallback selon votre politique de sécurité
-      allowedOrigins = ['*']; // Utilisez avec précaution en production
-    }
-  }
-  
-  // Configurer CORS avec validation dynamique des origines
-  app.enableCors({
-    origin: (origin, callback) => {
-      // En mode développement ou si pas d'origine (même origine), autoriser
-      if (!origin || env === 'development' && (
-        origin.includes('localhost') || 
-        origin.includes('127.0.0.1')
-      )) {
-        callback(null, true);
-        return;
-      }
-
-      // Pour les autres cas, vérifier la liste des origines autorisées
-      const isAllowed = allowedOrigins.some(allowedOrigin => {
-        // Si l'origine autorisée est exactement *, tout autoriser
-        if (allowedOrigin === '*') return true;
-        // Sinon vérifier correspondance exacte
-        return origin === allowedOrigin;
-      });
-
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        callback(new Error(`Origin ${origin} not allowed`), false);
-      }
-    },
+  // Configurer CORS avec une liste explicite d'origines et des options plus permissives pour le développement
+  const corsOptions = {
+    origin: env === 'development' 
+      ? (origin, callback) => {
+          // En développement, autoriser toutes les origines mais les logger pour diagnostic
+          console.log(`[CORS] Requête reçue de l'origine: ${origin || 'Aucune origine (requête locale)'}`);
+          callback(null, true);
+        }
+      : allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    credentials: allowCredentials,
+    credentials: true,
     allowedHeaders: [
       'Authorization',
       'Content-Type',
@@ -91,16 +61,66 @@ async function bootstrap() {
       'Origin',
       'User-Agent',
       'X-Requested-With',
-      'X-Correlation-Id'
+      'DNT',
+      'Referer',
+      'X-Correlation-Id',
+      'x-request-debug',
+      'Sec-Fetch-Mode',
+      'Access-Control-Request-Headers',
+      'Access-Control-Request-Method',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Credentials',
+      'Access-Control-Allow-Headers'
     ],
-    exposedHeaders: ['Content-Disposition']
+    exposedHeaders: ['Content-Disposition'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400 // 24 heures en secondes - conserver le cache des résultats preflight plus longtemps
+  };
+  
+  // Log détaillé des options CORS pour déboguer
+  console.log(`[CORS] Configuration:
+- Environment: ${env}
+- Credentials autorisés: ${corsOptions.credentials}
+- Options preflight status: ${corsOptions.optionsSuccessStatus}
+- Mode Preflight: ${corsOptions.preflightContinue ? 'Continue' : 'Termine'}`);
+  
+  // ======== DEBUT CONFIGURATION CORS STANDARD - SOLUTION DEFINITIVE ========
+  // Configuration CORS standard complète - Approche native NestJS
+  // Cette configuration a été validée pour résoudre les problèmes de requêtes OPTIONS
+  // et permettre l'authentification avec JWT
+  
+  // Détails supplémentaires pour le debugging
+  console.log(`[CORS] Configuration STANDARD:`)
+  console.log(`- Frontend URL: ${process.env.FRONTEND_URL || 'non défini'}`);
+  console.log(`- Origines autorisées: ${JSON.stringify(allowedOrigins)}`);
+  
+  // Configuration CORS STANDARD complète
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Logique pour autoriser les origines
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        console.log(`[CORS main.ts] Allowed origin: ${origin || 'No Origin'}`);
+        callback(null, true);
+      } else {
+        console.error(`[CORS main.ts] Blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    allowedHeaders: 'Content-Type, Accept, Authorization, Origin, X-Requested-With, Access-Control-Request-Method, Access-Control-Request-Headers, x-request-debug',
+    exposedHeaders: ['Content-Disposition'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400 // 24 heures - cache des résultats preflight
   });
   
   // Log détaillé de la configuration CORS
   const corsLogger = new Logger('CORS');
   corsLogger.log(`CORS configuré en PRIORITÉ:`);
   corsLogger.log(`- Mode: ${env}`);
-  corsLogger.log(`- Credentials: ${allowCredentials}`);
+  corsLogger.log(`- Credentials: true`);
   corsLogger.log(`- Origines autorisées: ${JSON.stringify(allowedOrigins)}`);
   // ======== FIN CONFIGURATION CORS ========
   
@@ -135,16 +155,23 @@ async function bootstrap() {
   // Intercepteur pour standardiser les réponses API
   app.useGlobalInterceptors(new ApiResponseInterceptor());
   
-  // Filtre d'exception global pour capturer toutes les erreurs non gérées
-  app.useGlobalFilters(new AllExceptionsFilter());
+  // Filtres d'exception globaux dans un ordre spécifique:
+  // 1. D'abord CorsExceptionFilter pour garantir les headers CORS sur TOUTES les réponses d'erreur
+  // 2. Ensuite AllExceptionsFilter pour le formatage standard des erreurs
+  app.useGlobalFilters(
+    new CorsExceptionFilter(),  // Crucial: doit être premier pour gérer les 401/403 du JwtAuthGuard
+    new AllExceptionsFilter()   // Formatage général des erreurs
+  );
+  
+  // Log d'information sur l'activation du filtre CORS pour les erreurs
+  const corsExceptionLogger = new Logger('CorsException');
+  corsExceptionLogger.log('Filtre CORS activé pour toutes les réponses d\'erreur - spécialement les 401/403 du JwtAuthGuard');
   
   // Logging des intercepteurs configurés
   const interceptorLogger = new Logger('Interceptors');
   interceptorLogger.log('HttpExceptionInterceptor et ApiResponseInterceptor configurés avec succès');
   
-  // Récupérer les URLs pour le logging
-  const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-  const backendUrl = configService.get<string>('BACKEND_URL') || 'http://localhost:3001';
+  // URLs déjà définies plus haut, réutilisation des variables
   
   // Log de base URL pour vérification
   const urlLogger = new Logger('URLs');

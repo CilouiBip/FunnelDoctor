@@ -396,4 +396,39 @@ export class YouTubeAuthService extends IntegrationService {
       return false;
     }
   }
+
+  /**
+   * Récupère les tokens OAuth pour un utilisateur donné
+   * @param userId Identifiant de l'utilisateur
+   * @returns Tokens OAuth ou null si non trouvés
+   */
+  async getTokensForUser(userId: string): Promise<any> {
+    return this.getIntegrationConfig(userId, this.integration_type);
+  }
+
+  /**
+   * Crée un client API YouTube à partir des tokens OAuth
+   * @param tokens Tokens OAuth
+   * @returns Client API YouTube configuré
+   */
+  createOAuthClient(tokens: any) {
+    const { google } = require('googleapis');
+    
+    const oauth2Client = new google.auth.OAuth2(
+      this.clientId,
+      this.clientSecret,
+      this.redirectUri
+    );
+    
+    oauth2Client.setCredentials({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expiry_date: tokens.expires_at * 1000 // Convert to milliseconds
+    });
+    
+    return google.youtube({
+      version: 'v3',
+      auth: oauth2Client
+    });
+  }
 }

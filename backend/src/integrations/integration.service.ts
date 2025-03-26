@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+ import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EncryptionService } from './encryption/encryption.service';
 
@@ -58,18 +58,23 @@ export class IntegrationService {
       
       const integrationId = this.getIntegrationId(userId, integrationType);
       
-      // Store in Supabase avec gestion correcte de l'upsert
+      // Ajout des logs de diagnostic
+      console.log(`[DIAGNOSTIC] Storing integration for userId=${userId}, type=${integrationType}`);
+      
+      // Store in Supabase avec user_id correctement renseigné
       const { error } = await this.supabaseService.getAdminClient()
         .from('integrations')
         .upsert({
           id: integrationId,
-          name: userId,  // Utilisation de 'name' au lieu de 'user_id'
+          user_id: userId,  // Utilisation de 'user_id' pour stocker l'ID utilisateur
+          name: integrationType, // 'name' identifie maintenant le type d'intégration
           type: 'oauth',  // Renseigner le type requis
           integration_type: integrationType,
           config: encryptedConfig,
           updated_at: new Date().toISOString(),
+          is_active: true, // Marquer l'intégration comme active
         }, { 
-          onConflict: 'name,integration_type',  // Utilisation de la contrainte correcte
+          onConflict: 'user_id,integration_type',  // Conflit sur user_id et integration_type
           ignoreDuplicates: false  // Force la mise à jour si duplicata
         });
       
@@ -93,17 +98,32 @@ export class IntegrationService {
     integrationType: string
   ): Promise<OAuthConfig | null> {
     try {
-      // Rechercher par name et integration_type plutôt que par ID
+      console.log(`[DIAGNOSTIC] Récupération de la configuration pour userId=${userId}, type=${integrationType}`);
+      
+      // Rechercher par user_id et integration_type
       const { data, error } = await this.supabaseService.getAdminClient()
         .from('integrations')
         .select('config')
-        .eq('name', userId)
+        .eq('user_id', userId)
         .eq('integration_type', integrationType)
         .single();
       
+      if (error) {
+        console.error(`[DIAGNOSTIC] Erreur lors de la récupération de l'intégration: ${error.message}`);
+      }
+      
       if (error || !data) {
+        console.log(`[DIAGNOSTIC] Aucune configuration d'intégration trouvée pour userId=${userId}, type=${integrationType}`);
         return null;
       }
+      
+      console.log(`[DIAGNOSTIC] Configuration d'intégration trouvée pour userId=${userId}, type=${integrationType}`);
+      // Afficher les clés disponibles sans exposer les valeurs sensibles
+      console.log(`[DIAGNOSTIC] Propriétés de config: ${Object.keys(data.config).join(', ')}`);
+      console.log(`[DIAGNOSTIC] access_token présent: ${!!data.config.access_token}`);
+      console.log(`[DIAGNOSTIC] refresh_token présent: ${!!data.config.refresh_token}`);
+      console.log(`[DIAGNOSTIC] expires_at: ${data.config.expires_at || 'non défini'}`);
+      console.log(`[DIAGNOSTIC] token_type: ${data.config.token_type || 'non défini'}`);
       
       const encryptedConfig = data.config;
       

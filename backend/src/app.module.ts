@@ -63,14 +63,19 @@ export class AppModule implements NestModule {
    * Configuration des middlewares globaux
    */
   configure(consumer: MiddlewareConsumer) {
-    // Appliquer le middleware d'extraction JWT à toutes les routes sauf celles d'authentification
+    console.log('[APP_MODULE] Configuration des middlewares en cours...');
+    
+    // Application du middleware d'extraction JWT
+    // Tout le traitement CORS est géré via app.enableCors() dans main.ts
     consumer
       .apply(JwtExtractionMiddleware)
       .exclude(
         { path: 'api/auth/login', method: RequestMethod.POST },
         { path: 'api/auth/signup', method: RequestMethod.POST },
         { path: 'api/health', method: RequestMethod.GET },
-        { path: 'api/debug/*', method: RequestMethod.GET }
+        { path: 'api/debug/*', method: RequestMethod.GET },
+        // Exclure TOUTES les requêtes OPTIONS de l'authentification
+        { path: '*', method: RequestMethod.OPTIONS }
       )
       .forRoutes('*');
   }
