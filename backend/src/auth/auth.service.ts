@@ -89,51 +89,142 @@ export class AuthService {
 
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
     try {
-      this.logger.log(`Attempt to login user with email: ${loginDto.email}`);
+      this.logger.log(`[AUTH SERVICE] Tentative de connexion pour: ${loginDto.email}`);
 
       // Find user by email
       const user = await this.usersService.findByEmail(loginDto.email);
       if (!user) {
-        this.logger.warn(`Login failed: User with email ${loginDto.email} not found`);
+        this.logger.warn(`[AUTH SERVICE] Connexion échouée: Utilisateur avec email ${loginDto.email} non trouvé`);
         throw new UnauthorizedException('Email ou mot de passe incorrect');
       }
 
+      this.logger.log(`[AUTH SERVICE] Utilisateur trouvé avec ID: ${user.id}`);
+      
       // Validate password
       const isPasswordValid = await bcrypt.compare(loginDto.password, user.password_hash);
       if (!isPasswordValid) {
-        this.logger.warn(`Login failed: Invalid password for user with email ${loginDto.email}`);
+        this.logger.warn(`[AUTH SERVICE] Connexion échouée: Mot de passe invalide pour ${loginDto.email}`);
         throw new UnauthorizedException('Email ou mot de passe incorrect');
       }
 
+      this.logger.log(`[AUTH SERVICE] Mot de passe valide pour ${loginDto.email}, génération du token JWT...`);
+      
       // Generate JWT token
       const token = this.generateToken(user.id, user.email);
-      this.logger.log(`Login successful: JWT token generated for user ${user.id}`);
+      
+      if (!token) {
+        this.logger.error(`[AUTH SERVICE] ERREUR: Token généré est null ou undefined pour ${user.id}`);
+        throw new InternalServerErrorException('Erreur lors de la génération du token');
+      }
+      
+      this.logger.log(`[AUTH SERVICE] Token JWT généré avec succès pour ${user.id}, début: ${token.substring(0, 15)}...`);
 
       // Return user data and token
       const { password_hash, ...userWithoutPassword } = user;
-      return {
+      
+      // Construction explicite de la réponse
+      const response: AuthResponseDto = {
         user: userWithoutPassword,
-        access_token: token,
+        access_token: token
       };
+      
+      // Log de la réponse complète pour déboguer
+      this.logger.log(`[AUTH SERVICE] Structure de réponse: ${JSON.stringify({
+        contient_token: !!response.access_token,
+        type_token: typeof response.access_token,
+        longueur_token: response.access_token ? response.access_token.length : 0,
+        clés_réponse: Object.keys(response),
+        propriétés_utilisateur: Object.keys(response.user)
+      })}`);
+      
+      return response;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
       
-      this.logger.error(`Login error: ${error.message}`, error.stack);
+      this.logger.error(`[AUTH SERVICE] Erreur login: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Erreur lors de la connexion. Veuillez réessayer plus tard.');
     }
   }
 
+  /**
+   * Génère un token JWT pour un utilisateur
+   * @param userId - ID de l'utilisateur 
+   * @param email - Email de l'utilisateur
+   * @returns Token JWT signé
+   */
   private generateToken(userId: string, email: string): string {
-    const payload = {
-      sub: userId,
-      email,
-    };
-    return this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_SECRET'),
-      expiresIn: this.configService.get('JWT_EXPIRES_IN'),
-    });
+    try {
+      // Log des paramètres d'entrée
+      this.logger.log(`[AUTH SERVICE][generateToken] Génération de token pour - userId: ${userId}, email: ${email}`);
+      
+      // SOLUTION: Créer une clé secrète par défaut pour le développement au cas où la variable d'environnement n'est pas définie
+      // ATTENTION: Ceci est une solution temporaire pour débloquer le développement
+      const DEFAULT_JWT_SECRET = 'funnel-doctor-dev-secret-key-temporary-DO-NOT-USE-IN-PRODUCTION';
+      const DEFAULT_JWT_EXPIRES = '30d';
+      
+      // Récupération sécurisée des variables d'environnement avec valeurs par défaut
+      let jwtSecret = this.configService.get<string>('JWT_SECRET');
+      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || DEFAULT_JWT_EXPIRES;
+      
+      // Log complet de l'environnement pour diagnostiquer le problème
+      this.logger.log('[AUTH SERVICE][generateToken] Détails de l\'environnement:');
+      this.logger.log(`- JWT_SECRET défini: ${!!jwtSecret}`);
+      this.logger.log(`- JWT_EXPIRES_IN: ${jwtExpiresIn}`);
+      this.logger.log(`- NODE_ENV: ${this.configService.get<string>('NODE_ENV') || 'non défini'}`);
+      
+      // Vérification du secret et utilisation d'un fallback si nécessaire
+      if (!jwtSecret) {
+        this.logger.warn('[AUTH SERVICE][generateToken] ATTENTION: JWT_SECRET non défini, utilisation de la clé par défaut pour le développement');
+        jwtSecret = DEFAULT_JWT_SECRET;
+      }
+      
+      // Construction du payload
+      const payload = {
+        sub: userId,
+        email,
+        // Ajout d'informations supplémentaires pour le débogage
+        iat: Math.floor(Date.now() / 1000),
+        aud: 'funnel-doctor-app',
+        iss: 'funnel-doctor-api'
+      };
+      
+      // Génération du token avec log détaillé
+      this.logger.log('[AUTH SERVICE][generateToken] Tentative de signature du token...');
+      this.logger.log(`- Option 'secret' définie: ${!!jwtSecret}`);
+      this.logger.log(`- Option 'expiresIn' définie: ${!!jwtExpiresIn}`);
+      
+      // Génération du token
+      let token;
+      try {
+        token = this.jwtService.sign(payload, {
+          secret: jwtSecret,
+          expiresIn: jwtExpiresIn
+        });
+      } catch (signError) {
+        this.logger.error(`[AUTH SERVICE][generateToken] Erreur lors de la signature JWT: ${signError.message}`, signError.stack);
+        throw new InternalServerErrorException(`Erreur de signature JWT: ${signError.message}`);
+      }
+      
+      // Vérifier que le token est généré correctement
+      if (!token) {
+        this.logger.error('[AUTH SERVICE][generateToken] ERREUR: Token généré null ou undefined');
+        throw new InternalServerErrorException('Echec de génération du token');
+      }
+      
+      // Log de succès avec aperçu du token
+      this.logger.log(`[AUTH SERVICE][generateToken] Token JWT généré avec succès!`);
+      this.logger.log(`- Début: ${token.substring(0, 15)}...`);
+      this.logger.log(`- Longueur: ${token.length} caractères`);
+      this.logger.log(`- Format: ${token.split('.').length} segments JWT`);
+      
+      return token;
+    } catch (error) {
+      // Log d'erreur détaillé
+      this.logger.error(`[AUTH SERVICE][generateToken] ERREUR de génération: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Erreur lors de la génération du token: ${error.message}`);
+    }
   }
 
   /**

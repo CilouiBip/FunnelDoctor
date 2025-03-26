@@ -1,4 +1,5 @@
-import { Body, Controller, Post, Get, Query, Param } from '@nestjs/common';
+import { Body, Controller, Post, Get, Query, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
@@ -31,8 +32,46 @@ export class AuthController {
   }
 
   @Post('login')
-  login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
+    console.log('[AUTH CONTROLLER] Tentative de connexion avec:', loginDto.email);
+    
+    try {
+      // Récupérer la réponse du service d'authentification
+      const authResult = await this.authService.login(loginDto);
+      
+      // Log la réponse COMPLÈTE pour diagnostiquer
+      console.log('[AUTH CONTROLLER] Réponse COMPLÈTE du service auth:', JSON.stringify(authResult));
+      
+      // Forcer explicitement le format de réponse avec accès direct au token
+      const response = {
+        access_token: authResult.access_token,
+        user: authResult.user
+      };
+      
+      // Log détaillé de la réponse finale formatée
+      console.log('[AUTH CONTROLLER] Détails de la réponse finale:');
+      console.log('- Propriétés:', Object.keys(response));
+      console.log('- Type de access_token:', typeof response.access_token);
+      console.log('- access_token présent:', response.access_token ? 'OUI' : 'NON');
+      if (response.access_token) {
+        console.log('- Longueur du token:', response.access_token.length);
+        console.log('- Début du token:', response.access_token.substring(0, 20) + '...');
+      } else {
+        console.log('- ALERTE: access_token est absent, null ou undefined');
+      }
+      
+      // Vérification finale pour alerter si le token est manquant
+      if (!response.access_token) {
+        console.error('[AUTH CONTROLLER] ERREUR CRITIQUE: Le token est absent dans la réponse finale!');
+      } else {
+        console.log('[AUTH CONTROLLER] Succès: Token présent dans la réponse finale');
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('[AUTH CONTROLLER] Erreur login:', error.message, error.stack);
+      throw error;
+    }
   }
 
   @Post('forgot-password')
@@ -66,5 +105,29 @@ export class AuthController {
     
     // Pour des raisons de sécurité, ne pas indiquer si l'email existe ou est déjà vérifié
     return { message: 'Si votre email est enregistré, vous recevrez un nouvel email de vérification.' };
+  }
+
+  // ===== Endpoints de test pour diagnostiquer les problèmes d'authentification =====
+  
+  @Get('test-protected')
+  @UseGuards(JwtAuthGuard)
+  testProtectedRoute() {
+    console.log('[AUTH CONTROLLER] Test d\'une route protégée par JWT');
+    return {
+      status: 'success',
+      message: 'JWT OK - Cette route est protégée par JWT et vous y avez accès',
+      timestamp: new Date().toISOString()
+    };
+  }
+  
+  @Get('test-cors')
+  testCors() {
+    console.log('[AUTH CONTROLLER] Test CORS sans authentification');
+    return {
+      status: 'success',
+      message: 'CORS OK - Cette route est accessible sans authentification',
+      timestamp: new Date().toISOString(),
+      headers: 'Les headers CORS sont corrects'
+    };
   }
 }

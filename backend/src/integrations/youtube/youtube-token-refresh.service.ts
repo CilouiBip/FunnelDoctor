@@ -26,11 +26,17 @@ export class YouTubeTokenRefreshService {
       // Find integrations with tokens that expire in less than 2 hours
       const expiryThreshold = Math.floor(Date.now() / 1000) + 2 * 60 * 60; // current time + 2 hours
       
+      // Utiliser 'name' comme stockage d'ID utilisateur plutôt que 'user_id'
+      // Logging pour diagnostic
+      this.logger.log(`Recherche des jetons expirant avant ${new Date(expiryThreshold * 1000).toISOString()}`);
+      
       const { data, error } = await this.supabaseService.getAdminClient()
         .from('integrations')
-        .select('id, user_id, config')
+        .select('id, name, config')
         .eq('integration_type', this.integration_type)
         .lt('config->expires_at', expiryThreshold);
+      
+      this.logger.debug(`Résultat de la requête: ${data ? data.length : 0} intégrations trouvées`);
       
       if (error) {
         throw new Error(`Failed to fetch expiring tokens: ${error.message}`);
@@ -44,8 +50,10 @@ export class YouTubeTokenRefreshService {
       this.logger.log(`Found ${data.length} YouTube tokens to refresh`);
       
       // Process each token that needs refreshing
+      this.logger.debug(`Intégrations trouvées: ${JSON.stringify(data.map(i => ({id: i.id, userId: i.name})))}`);
+      
       const refreshPromises = data.map(integration => 
-        this.refreshTokenWithRetry(integration.user_id)
+        this.refreshTokenWithRetry(integration.name) // Utiliser 'name' comme ID utilisateur
       );
       
       // Wait for all refresh operations to complete
@@ -112,5 +120,42 @@ export class YouTubeTokenRefreshService {
       // Clear the in-progress flag
       delete this.refreshInProgressFlag[refreshKey];
     }
+  }
+
+  /**
+   * Vérifie si un token d'accès est valide et le rafraîchit si nécessaire
+   * @param userId Identifiant de l'utilisateur
+   * @param tokens Tokens OAuth actuels
+   * @returns Tokens OAuth valides
+   */
+  async ensureFreshAccessToken(userId: string, tokens: any): Promise<any> {
+    // Vérifier si le token d'accès est expiré
+    const currentTime = Math.floor(Date.now() / 1000);
+    const expiresAt = tokens.expires_at || 0;
+    
+    // Si le token expire dans moins de 5 minutes, le rafraîchir
+    if (expiresAt - currentTime < 300) {
+      this.logger.debug(`Le token pour l'utilisateur ${userId} expire bientôt, rafraîchissement...`);
+      const success = await this.youtubeAuthService.refreshAccessToken(userId);
+      
+      if (success) {
+        // Récupérer les nouveaux tokens
+        return await this.youtubeAuthService.getTokensForUser(userId);
+      } else {
+        this.logger.warn(`Échec du rafraîchissement du token pour l'utilisateur ${userId}`);
+        return tokens; // Retourner les tokens existants malgré l'expiration imminente
+      }
+    }
+    
+    return tokens;
+  }
+
+  /**
+   * Crée un client YouTube autorisé avec les tokens d'accès fournis
+   * @param tokens Tokens OAuth valides
+   * @returns Client YouTube API autorisé
+   */
+  createAuthorizedYouTubeClient(tokens: any) {
+    return this.youtubeAuthService.createOAuthClient(tokens);
   }
 }
