@@ -12,10 +12,13 @@ const nextConfig = {
   },
   // Configuration pour rediriger les requêtes API vers le backend NestJS
   async rewrites() {
+    const ngrokUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+    console.log(`Using backend URL: ${ngrokUrl}`);
+    
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:3001/api/:path*',
+        destination: `${ngrokUrl}/api/:path*`,
       },
     ];
   }

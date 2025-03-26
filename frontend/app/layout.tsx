@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { TokenMigration } from '../components/TokenMigration';
 
 export const metadata: Metadata = {
   title: 'FunnelDoctor - YouTube Funnel Analytics',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <TokenMigration />
+        {children}
+      </body>
     </html>
   );
 }

@@ -9,6 +9,11 @@ import { YouTubeAnalyticsService } from '../integrations/youtube/youtube-analyti
 import { Logger } from '@nestjs/common';
 import * as readline from 'readline';
 
+// Fonction pour formater une date au format YYYY-MM-DD
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
@@ -29,18 +34,19 @@ async function bootstrap() {
 
     // Vu00e9rifier si l'intu00e9gration existe du00e9ju00e0
     logger.log('Vu00e9rification de l\'intu00e9gration existante...');
-    const existingIntegration = await youtubeAuthService.getIntegrationByUserIdAndProvider(TEST_USER_ID, 'youtube');
-    logger.log(`Intu00e9gration existante: ${existingIntegration ? 'OUI' : 'NON'}\n`);
+    const config = await youtubeAuthService.getIntegrationConfig(TEST_USER_ID, 'youtube');
+    const hasValidIntegration = await youtubeAuthService.hasValidIntegration(TEST_USER_ID);
+    logger.log(`Intu00e9gration existante: ${config ? 'OUI' : 'NON'}`);
+    logger.log(`Intu00e9gration valide: ${hasValidIntegration ? 'OUI' : 'NON'}\n`);
 
-    if (existingIntegration) {
+    if (config) {
       // Afficher les du00e9tails de l'intu00e9gration existante
       logger.log('Du00e9tails de l\'intu00e9gration:');
-      logger.log(`ID: ${existingIntegration.id}`);
-      logger.log(`Cru00e9u00e9e le: ${new Date(existingIntegration.created_at).toLocaleString()}`);
-      logger.log(`Mise u00e0 jour le: ${new Date(existingIntegration.updated_at).toLocaleString()}`);
+      logger.log(`Access token: ${config.access_token ? '✓ Pru00e9sent' : '✗ Absent'}`);
+      logger.log(`Refresh token: ${config.refresh_token ? '✓ Pru00e9sent' : '✗ Absent'}`);
       
       // Vu00e9rifier si les tokens sont expiru00e9s
-      const expiresAt = new Date(existingIntegration.expires_at);
+      const expiresAt = config.expires_at ? new Date(config.expires_at * 1000) : new Date();
       const now = new Date();
       const isExpired = expiresAt < now;
       
@@ -57,15 +63,17 @@ async function bootstrap() {
         const endDate = new Date();
         
         try {
-          const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDate, endDate);
+          const startDateStr = formatDate(startDate);
+          const endDateStr = formatDate(endDate);
+          const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
           logger.log('\nMu00e9triques de base:');
           console.log(basicMetrics);
           
-          const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDate, endDate, 5);
+          const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
           logger.log('\nTop 5 vidu00e9os:');
           console.log(topVideos);
           
-          const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID, startDate, endDate);
+          const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
           logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
           console.log(executiveSummary);
           
@@ -81,7 +89,7 @@ async function bootstrap() {
         rl.question('> ', async (answer) => {
           if (answer.toLowerCase() === 'oui') {
             logger.log('Ru00e9vocation de l\'intu00e9gration...');
-            await youtubeAuthService.revokeIntegration(TEST_USER_ID, 'youtube');
+            await youtubeAuthService.revokeIntegration(TEST_USER_ID);
             logger.log('Intu00e9gration ru00e9voqnu00e9e avec succu00e8s!');
           } else {
             logger.log('Conservation de l\'intu00e9gration existante.');
@@ -111,7 +119,7 @@ async function bootstrap() {
           logger.log('\nTraitement du callback...');
           const result = await youtubeAuthService.handleCallback(code, state);
           logger.log('Autorisation ru00e9ussie!');
-          logger.log(`ID d'intu00e9gration: ${result.integrationId}`);
+          logger.log(`User ID: ${result.userId || 'unknown'}`);
           
           // Tester l'intu00e9gration
           logger.log('\nTest de l\'intu00e9gration avec YouTube Analytics...');
@@ -120,15 +128,17 @@ async function bootstrap() {
           const endDate = new Date();
           
           try {
-            const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDate, endDate);
+            const startDateStr = formatDate(startDate);
+            const endDateStr = formatDate(endDate);
+            const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
             logger.log('\nMu00e9triques de base:');
             console.log(basicMetrics);
             
-            const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDate, endDate, 5);
+            const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
             logger.log('\nTop 5 vidu00e9os:');
             console.log(topVideos);
             
-            const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID, startDate, endDate);
+            const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
             logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
             console.log(executiveSummary);
             
