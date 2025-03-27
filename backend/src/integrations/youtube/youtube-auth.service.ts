@@ -340,27 +340,52 @@ export class YouTubeAuthService extends IntegrationService {
 
   /**
    * Revoke a user's YouTube integration
+   * This will revoke both access_token and refresh_token and delete the integration from DB
    */
   async revokeIntegration(userId: string): Promise<boolean> {
     try {
       const config = await this.getIntegrationConfig(userId, this.integration_type);
       
-      if (!config || !config.access_token) {
+      if (!config) {
+        this.logger.log(`No YouTube integration found for user ${userId}`);
         return true; // Nothing to revoke
       }
       
-      // Revoke the access token
-      await firstValueFrom(
-        this.httpService.post(
-          'https://oauth2.googleapis.com/revoke',
-          { token: config.access_token },
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          },
-        ),
-      );
+      // Revoke both tokens if available
+      if (config.access_token) {
+        try {
+          this.logger.log(`Revoking access token for user ${userId}`);
+          await firstValueFrom(
+            this.httpService.post(
+              'https://oauth2.googleapis.com/revoke',
+              { token: config.access_token },
+              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            )
+          );
+          this.logger.log(`Successfully revoked access token for user ${userId}`);
+        } catch (tokenError) {
+          // Continue even if access token revocation fails
+          this.logger.warn(`Failed to revoke access token: ${tokenError.message}`);
+        }
+      }
+      
+      // Revoke refresh token (more important for security)
+      if (config.refresh_token) {
+        try {
+          this.logger.log(`Revoking refresh token for user ${userId}`);
+          await firstValueFrom(
+            this.httpService.post(
+              'https://oauth2.googleapis.com/revoke',
+              { token: config.refresh_token },
+              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            )
+          );
+          this.logger.log(`Successfully revoked refresh token for user ${userId}`);
+        } catch (tokenError) {
+          // Continue even if refresh token revocation fails
+          this.logger.warn(`Failed to revoke refresh token: ${tokenError.message}`);
+        }
+      }
       
       // Remove the integration from our database
       const integrationId = this.getIntegrationId(userId, this.integration_type);
@@ -371,8 +396,10 @@ export class YouTubeAuthService extends IntegrationService {
         .eq('id', integrationId);
       
       if (error) {
-        throw new Error(`Failed to delete integration: ${error.message}`);
+        throw new Error(`Failed to delete integration from database: ${error.message}`);
       }
+      
+      this.logger.log(`Successfully deleted integration record for user ${userId}`);
       
       await this.logOAuthEvent({
         user_id: userId,
@@ -383,7 +410,7 @@ export class YouTubeAuthService extends IntegrationService {
       
       return true;
     } catch (error) {
-      this.logger.error(`Error revoking integration: ${error.message}`);
+      this.logger.error(`Error in revokeIntegration for user ${userId}: ${error.message}`);
       
       await this.logOAuthEvent({
         user_id: userId,
@@ -412,23 +439,59 @@ export class YouTubeAuthService extends IntegrationService {
    * @returns Client API YouTube configuré
    */
   createOAuthClient(tokens: any) {
+    this.logger.log(`[OAUTH_CLIENT] Création client OAuth avec tokens: ${JSON.stringify({
+      has_access_token: !!tokens.access_token,
+      has_refresh_token: !!tokens.refresh_token,
+      expires_at: tokens.expires_at
+    })}`);
+
     const { google } = require('googleapis');
     
+    // Création du client OAuth2 avec les identifiants de l'application
     const oauth2Client = new google.auth.OAuth2(
       this.clientId,
       this.clientSecret,
       this.redirectUri
     );
     
-    oauth2Client.setCredentials({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expiry_date: tokens.expires_at * 1000 // Convert to milliseconds
-    });
+    // Vérification de la présence des tokens nécessaires
+    if (!tokens.access_token) {
+      this.logger.error('[OAUTH_CLIENT] ERREUR: access_token manquant lors de la création du client OAuth');
+      throw new Error('access_token requis pour créer un client OAuth');
+    }
     
-    return google.youtube({
+    // CORRECTION CRITIQUE: Structure exacte des credentials attendue par Google
+    const credentials: any = {
+      access_token: tokens.access_token
+    };
+    
+    // Ajouter refresh_token seulement s'il est disponible (pas null/undefined)
+    if (tokens.refresh_token) {
+      credentials.refresh_token = tokens.refresh_token;
+    }
+    
+    // Ajouter expiry_date seulement si expires_at est défini
+    // Google attend expiry_date en millisecondes depuis l'epoch
+    if (tokens.expires_at) {
+      credentials.expiry_date = tokens.expires_at * 1000; // Convertir en millisecondes
+    }
+    
+    this.logger.log(`[OAUTH_CLIENT] Configuration des credentials: ${JSON.stringify({
+      has_access_token: !!credentials.access_token, 
+      has_refresh_token: !!credentials.refresh_token,
+      has_expiry_date: !!credentials.expiry_date
+    })}`);
+    
+    // Définition des credentials pour le client OAuth2
+    oauth2Client.setCredentials(credentials);
+    
+    // Création et retour du client YouTube API
+    const youtubeClient = google.youtube({
       version: 'v3',
       auth: oauth2Client
     });
+    
+    this.logger.log('[OAUTH_CLIENT] Client YouTube créé avec succès');
+    return youtubeClient;
   }
 }

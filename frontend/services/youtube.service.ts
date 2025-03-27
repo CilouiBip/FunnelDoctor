@@ -74,18 +74,46 @@ export const fetchVideos = async (
 
     // This will be proxied through Next.js to your ngrok backend
     // Passage à l'endpoint standard pour stocker les vidéos en DB
-    const finalUrl = `${YOUTUBE_API_URL}/youtube/videos`;
-    console.log("URL finale appelée (fetchVideos):", finalUrl, params);
+    const finalUrl = `${YOUTUBE_API_URL}/videos`;
+    console.log("[FRONTEND-FETCH] URL finale appelée (fetchVideos):", finalUrl, params);
     console.log("[INFO] Utilisation de l'endpoint standard pour stocker les vidéos en DB");
     
     // Utilisation de l'instance Axios authentifiée qui inclut automatiquement le token JWT
     console.log("[AUTH] Appel de l'API avec authentification JWT");
     const response = await authenticatedAxios.get(finalUrl, { params });
     
+    // AJOUT DE LOGS DE DÉBOGAGE
+    console.log('[FRONTEND-FETCH] Réponse API BRUTE pour /videos:', response.data);
+    console.log('[FRONTEND-FETCH] Headers:', response.headers);
+    console.log('[FRONTEND-FETCH] Status:', response.status);
+    
+    // Vérifier la structure exacte de la réponse
+    if (response.data) {
+      console.log('[FRONTEND-FETCH] Structure de la réponse:', {
+        hasItems: !!response.data.items,
+        itemsLength: response.data.items?.length,
+        hasData: !!response.data.data,
+        hasVideos: !!response.data.videos,
+        keys: Object.keys(response.data)
+      });
+    }
+    
     // Utilisation de l'adaptateur pour extraire les données de la réponse standardisée
-    return extractData<YouTubeResponse>(response);
+    const extracted = extractData<YouTubeResponse>(response);
+    console.log('[FRONTEND-FETCH] Données extraites après adaptateur:', extracted);
+    return extracted;
   } catch (error) {
-    console.error('Error fetching YouTube videos:', error);
+    console.error('[FRONTEND-FETCH] Error fetching YouTube videos:', error);
+    console.error('[FRONTEND-FETCH] Error details:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        baseURL: error.config?.baseURL
+      }
+    });
     throw error;
   }
 };

@@ -27,9 +27,49 @@ export interface VideoDTO {
     commentCount: number;
     favoriteCount: number;
   };
+  analytics?: {
+    period: {
+      startDate: string;
+      endDate: string;
+    };
+    views: number;
+    watchTimeMinutes: number;
+    averageViewDuration: number;
+    likes: number;
+    comments: number;
+  };
   duration: string;
   tags?: string[];
   dbId?: string; // ID in DB after storing
+}
+
+/**
+ * Interface for YouTube Analytics data 
+ */
+export interface VideoAnalyticsDTO {
+  // Période d'analyse
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  // Métriques de base
+  views: number;
+  watchTimeMinutes: number;
+  averageViewDuration: number;
+  likes: number;
+  comments: number;
+
+  // Nouvelles métriques ajoutées - Métriques de croissance
+  subscribersGained?: number;   // Nombre d'abonnés gagnés grâce à cette vidéo
+  shares?: number;             // Nombre de partages de la vidéo
+  
+  // Métriques de rétention et engagement
+  averageViewPercentage?: number; // Pourcentage moyen de la vidéo visionnée (rétention)
+  
+  // Métriques de cards/fiches YouTube (appels à l'action)
+  cardClickRate?: number;      // Taux de clic sur les cartes YouTube
+  cardClicks?: number;         // Nombre de clics sur les cartes YouTube
+  cardImpressions?: number;    // Nombre d'affichages des cartes YouTube
 }
 
 /** Extended version of VideoDTO for analytics. */
@@ -39,6 +79,8 @@ export interface VideoStatsDTO extends VideoDTO {
     normalizedEngagementRate?: number; // score 0..1
     engagementLevel?: string;          // textual category
   };
+  // Ajout de la référence aux données analytiques complètes
+  analytics?: VideoAnalyticsDTO;
 }
 
 @Injectable()
@@ -64,54 +106,65 @@ export class YouTubeDataService {
     options?: VideoQueryOptions,
     storeInDb: boolean = true,
   ): Promise<{ videos: VideoDTO[]; nextPageToken?: string }> {
-    this.logger.debug('=== START YOUTUBE VIDEO RETRIEVAL PROCESS ===');
-    this.logger.log(`[DIAGNOSTIC] getUserVideos for userId=${userId}, options=${JSON.stringify(options || {})}, storeInDb=${storeInDb}`);
-
-    // 1) Check valid integration
-    const isValidIntegration = await this.youtubeAuthService.hasValidIntegration(userId);
-    this.logger.log(`[DIAGNOSTIC] Integration valid? ${isValidIntegration}`);
-    if (!isValidIntegration) {
-      this.logger.error(`[DIAGNOSTIC] No valid YouTube integration for user ${userId}`);
-      throw new UnauthorizedException('No valid YouTube integration');
-    }
-
-    // 2) Retrieve tokens from DB
-    const tokens = await this.integrationService.getIntegrationConfig(userId, 'youtube');
-    if (!tokens || !tokens.access_token) {
-      this.logger.error(`[DIAGNOSTIC] No valid token for userId=${userId}`);
-      throw new UnauthorizedException('No valid token to access YouTube');
-    }
-
-    this.logger.log(`[DIAGNOSTIC] Attempting to get authorized client...`);
-    let youtube: youtube_v3.Youtube;
-    try {
-      youtube = await this.getAuthorizedYouTubeClient(userId);
-    } catch (err) {
-      this.logger.error(`[DIAGNOSTIC] Error retrieving authorized client: ${err.message}`);
-      // Possibly rethrow or handle. We'll rethrow for now.
-      throw err;
-    }
-
-    // 3) Log query options
-    this.logger.log(`[DIAGNOSTIC] API options: ${JSON.stringify(options || {})}`);
+    this.logger.log('█████████ DÉBUT RÉCUPÉRATION VIDÉOS YOUTUBE █████████');
+    this.logger.log(`[DATA] Récupération vidéos pour utilisateur=${userId}, options=${JSON.stringify(options || {})}, stockage=${storeInDb}`);
 
     try {
-      // 4) Retrieve channel to find uploads playlist
+      // 1) Vérification de l'intégration
+      this.logger.log(`[DATA] Étape 1: Vérification validité intégration YouTube pour utilisateur ${userId}`);
+      const isValidIntegration = await this.youtubeAuthService.hasValidIntegration(userId);
+      this.logger.log(`[DATA] Intégration valide: ${isValidIntegration}`);
+      if (!isValidIntegration) {
+        this.logger.error(`[DATA] Aucune intégration YouTube valide pour utilisateur ${userId}`);
+        throw new UnauthorizedException('No valid YouTube integration');
+      }
+
+      // 2) Récupération des tokens depuis la base de données
+      this.logger.log(`[DATA] Étape 2: Récupération des tokens depuis Supabase pour utilisateur ${userId}`);
+      const tokens = await this.integrationService.getIntegrationConfig(userId, 'youtube');
+      if (!tokens || !tokens.access_token) {
+        this.logger.error(`[DATA] Tokens inexistants ou access_token manquant pour utilisateur ${userId}`);
+        throw new UnauthorizedException('No valid token to access YouTube');
+      }
+      this.logger.log(`[DATA] Tokens récupérés avec succès pour utilisateur ${userId}`);
+      this.logger.log(`[DATA] ACCESS_TOKEN: trouvé (${tokens.access_token ? 'oui' : 'non'}), REFRESH_TOKEN: trouvé (${tokens.refresh_token ? 'oui' : 'non'}), EXPIRES_AT: ${tokens.expires_at || 'non défini'}`);
+
+
+      // 3) Création du client YouTube autorisé (avec refresh token si nécessaire)
+      this.logger.log(`[DATA] Étape 3: Création du client YouTube autorisé (avec refresh si nécessaire)`);
+      let youtube: youtube_v3.Youtube;
+      try {
+        youtube = await this.getAuthorizedYouTubeClient(userId);
+        this.logger.log(`[DATA] Client YouTube créé avec succès et autorisé`);
+      } catch (err) {
+        this.logger.error(`[DATA] ERREUR création client YouTube: ${err.message}`);
+        throw err;
+      }
+
+      // 4) Récupération de la chaîne et de la playlist uploads
+      this.logger.log(`[DATA] Étape 4: Récupération des informations de la chaîne YouTube`);
+      this.logger.log(`[DATA] Appel API YouTube Data: youtube.channels.list(mine=true)...`);
+      
       const channelsResponse = await youtube.channels.list({
         part: ['contentDetails'],
         mine: true,
       });
-
+      
       if (!channelsResponse.data.items || channelsResponse.data.items.length === 0) {
-        this.logger.warn(`[DIAGNOSTIC] No channel found for user ${userId}`);
+        this.logger.warn(`[DATA] Aucune chaîne trouvée pour l'utilisateur ${userId}`);
         return { videos: [] };
       }
-
+      
+      this.logger.log(`[DATA] Chaîne YouTube trouvée, recherche de la playlist des uploads`);
       const uploadsPlaylistId = channelsResponse.data.items[0].contentDetails?.relatedPlaylists?.uploads;
+      
       if (!uploadsPlaylistId) {
-        this.logger.warn(`[DIAGNOSTIC] No uploads playlist found for user ${userId}`);
+        this.logger.warn(`[DATA] Playlist uploads introuvable pour l'utilisateur ${userId}`);
         return { videos: [] };
       }
+      
+      this.logger.log(`[DATA] Playlist uploads trouvée: ${uploadsPlaylistId}`);
+      
 
       // 5) Paginate through the playlist items
       let allVideoItems: any[] = [];
@@ -168,68 +221,144 @@ export class YouTubeDataService {
       }
 
       // 8) Map them to our DTOs
+      this.logger.log(`[DATA] Étape 8: Transformation des données brutes en DTOs`);
       const videos = rawVideos.map((item) => this.mapToVideoDTO(item));
-      this.logger.log(`[DIAGNOSTIC] Successfully mapped ${videos.length} videos to DTOs`);
+      this.logger.log(`[DATA] Transformation réussie de ${videos.length} vidéos en DTOs structurés`);
 
-      // 9) Optionally store in DB
+      // 8b) ENRICHISSEMENT - Récupérer les statistiques analytiques pour les vidéos récentes
+      this.logger.log(`[DATA] Étape 8b: Enrichissement avec données YouTube Analytics`);
+      
+      if (videos.length > 0) {
+        // Limiter aux 10 vidéos les plus récentes pour respecter les quotas API
+        const recentVideos = [...videos]
+          .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+          .slice(0, 10);
+
+        this.logger.log(`[ANALYTICS] Récupération des données analytiques pour ${recentVideos.length} vidéos récentes`);
+        this.logger.log(`[ANALYTICS] ⮕ DÉBUT des appels à l'API YouTube Analytics`);
+        
+        let successCount = 0;
+        for (const video of recentVideos) {
+          try {
+            this.logger.log(`[ANALYTICS] Récupération analytics pour vidéo ${video.id}...`);
+            
+            // Utiliser une promesse avec timeout pour éviter de bloquer trop longtemps
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Timeout récupération analytics')), 15000)); // Timeout plus long
+            
+            const analyticsPromise = this.getVideoAnalytics(userId, video.id);
+            const analytics = await Promise.race([analyticsPromise, timeoutPromise]);
+            
+            if (!analytics) {
+              this.logger.warn(`[ANALYTICS] Aucune donnée analytics retournée pour vidéo ${video.id}`);
+              continue;
+            }
+            
+            // Enrichir l'objet vidéo avec les données analytiques
+            video.analytics = {
+              period: analytics.period || { startDate: '', endDate: '' },
+              views: analytics.views || 0,
+              watchTimeMinutes: analytics.watchTimeMinutes || 0,
+              averageViewDuration: analytics.averageViewDuration || 0,
+              likes: analytics.likes || 0,
+              comments: analytics.comments || 0
+            };
+            
+            successCount++;
+            this.logger.log(`[ANALYTICS] ✓ Données analytics récupérées pour vidéo ${video.id}`);
+          } catch (analyticsError) {
+            // Ne pas bloquer le processus si une erreur survient pour une vidéo
+            this.logger.error(`[ANALYTICS] ✗ ERREUR analytics pour vidéo ${video.id}: ${analyticsError.message}`);
+          }
+        }
+        
+        this.logger.log(`[ANALYTICS] ⮕ FIN des appels API Analytics - Succès: ${successCount}/${recentVideos.length} vidéos`);
+      } else {
+        this.logger.log(`[ANALYTICS] Aucune vidéo à enrichir avec les données analytics`);
+      }
+
+      // 9) Stockage en base de donnees Supabase
+      this.logger.log(`[DATA] Étape 9: Stockage des vidéos dans Supabase`);
+      
       if (storeInDb && videos.length > 0) {
-        this.logger.log(`[DIAGNOSTIC] Attempting to store ${videos.length} videos in database for user ${userId}`);
+        this.logger.log(`[STORAGE] ⮕ DÉBUT stockage de ${videos.length} vidéos dans Supabase pour utilisateur ${userId}`);
         let storedCount = 0;
         
         for (const vid of videos) {
           try {
+            this.logger.log(`[STORAGE] Stockage de la vidéo ${vid.id} (${vid.title})...`);
             const dbId = await this.storageService.storeVideo(userId, vid);
             vid.dbId = dbId;
             storedCount++;
+            this.logger.log(`[STORAGE] ✓ Vidéo ${vid.id} stockée avec succès (dbId=${dbId})`);
+            
+            // AJOUT FINAL: Stocker les statistiques si elles existent
+            if (vid.analytics) {
+              this.logger.log(`[STORAGE] Tentative stockage stats pour vidéo ${vid.id} (dbId=${dbId})`);
+              try {
+                await this.storageService.storeVideoStats(dbId, vid.stats, vid.analytics);
+                this.logger.log(`[STORAGE] ✓ Stats pour vidéo ${vid.id} stockées avec succès`);
+              } catch (statsError) {
+                this.logger.error(`[STORAGE] ✗ ERREUR stockage stats pour vidéo ${vid.id}: ${statsError.message}`);
+                // Ne pas bloquer le processus principal si le stockage des stats échoue pour une vidéo
+              }
+            } else {
+              this.logger.warn(`[STORAGE] ⚠ Aucune donnée analytics à stocker pour vidéo ${vid.id}`);
+            }
           } catch (storageError) {
-            this.logger.error(`[DIAGNOSTIC] Error storing video ${vid.id}: ${storageError.message}`);
+            this.logger.error(`[STORAGE] ✗ ERREUR stockage vidéo ${vid.id}: ${storageError.message}`);
           }
         }
         
-        this.logger.log(`[DIAGNOSTIC] Successfully stored ${storedCount}/${videos.length} videos in database`);
+        this.logger.log(`[STORAGE] ⮕ FIN stockage - ${storedCount}/${videos.length} vidéos stockées avec succès`);
       } else if (!storeInDb) {
-        this.logger.log(`[DIAGNOSTIC] Skipping database storage as requested (storeInDb=false)`);
+        this.logger.log(`[STORAGE] Stockage en base de données ignoré (storeInDb=false)`);
+      } else {
+        this.logger.log(`[STORAGE] Aucune vidéo à stocker dans Supabase`);
       }
 
-      // Check existing videos in DB for this user for comparison
+      // Vérification des vidéos déjà en base pour comparaison
       let dbVideosCount = 0;
       try {
         const dbVideos = await this.storageService.getUserStoredVideos(userId);
         dbVideosCount = dbVideos?.length || 0;
-        this.logger.log(`[DIAGNOSTIC] User has ${dbVideosCount} videos already stored in database`);
+        this.logger.log(`[STORAGE] L'utilisateur a désormais ${dbVideosCount} vidéos stockées en base`);
       } catch (dbError) {
-        this.logger.error(`[DIAGNOSTIC] Error checking existing videos in DB: ${dbError.message}`);
+        this.logger.warn(`[STORAGE] Impossible de vérifier le nombre de vidéos en base: ${dbError.message}`);
       }
       
-      this.logger.debug('=== END YOUTUBE VIDEO RETRIEVAL PROCESS ===');
-      return {
-        videos,
-        nextPageToken,
-      };
+      this.logger.log('█████████ FIN RÉCUPÉRATION VIDÉOS YOUTUBE █████████');
+      return { videos, nextPageToken };
     } catch (error) {
-      this.logger.error(`[DIAGNOSTIC] Error fetching user videos: ${error.message}`, error.stack);
-
-      // Check for token invalid
+      this.logger.error(`[DATA] ERREUR CRITIQUE récupération vidéos YouTube: ${error.message}`, error.stack);
+      
+      // Vérification des tokens invalides pour auto-révocation
       if (
         error.message.includes('invalid_grant') ||
         error.message.includes('Invalid Credentials') ||
         error.message.includes('401') ||
         error.message.includes('403')
       ) {
-        this.logger.warn(`[DIAGNOSTIC] Detected invalid/expired token. auto-revoking for user=${userId}`);
+        this.logger.warn(`[AUTH] ⚠ Token invalide/expiré détecté, révocation automatique pour utilisateur=${userId}`);
         try {
           await this.youtubeAuthService.revokeIntegration(userId);
-          this.logger.log(`[DIAGNOSTIC] YouTube integration revoked for user=${userId}`);
+          this.logger.log(`[AUTH] ✓ Intégration YouTube révoquée avec succès pour utilisateur=${userId}`);
         } catch (revokeError) {
-          this.logger.error(`[DIAGNOSTIC] Error revoking integration: ${revokeError.message}`, revokeError.stack);
+          this.logger.error(`[AUTH] ✗ Erreur lors de la révocation de l'intégration: ${revokeError.message}`, revokeError.stack);
         }
         return { videos: [] };
       }
 
-      // Otherwise rethrow
+      // Sinon, on propage l'erreur
       throw error;
     }
   }
+
+  // Pas de contenu ici - cette section sera supprimée
+
+  // Supprimié pour éviter les doublons - la deuxième implémentation sera utilisée
+
+  // Méthode supprimée - version duplliquée présente plus bas
 
   /**
    * Retrieve details (stats) for a single YouTube video.
@@ -291,33 +420,60 @@ export class YouTubeDataService {
    * Refresh token if needed, or throw UnauthorizedException if impossible.
    */
   private async getAuthorizedYouTubeClient(userId: string): Promise<youtube_v3.Youtube> {
-    this.logger.log(`[DIAGNOSTIC] getAuthorizedYouTubeClient for userId=${userId}`);
+    this.logger.log(`[YOUTUBE_AUTH] Début de la création du client YouTube pour utilisateur=${userId}`);
 
     const tokens = await this.integrationService.getIntegrationConfig(userId, 'youtube');
     if (!tokens) {
-      this.logger.error(`[DIAGNOSTIC] No youtube tokens for userId=${userId}`);
+      this.logger.error(`[YOUTUBE_AUTH] Aucun token pour userId=${userId}`);
       throw new UnauthorizedException('YouTube integration not found');
     }
 
-    // Check expiration & refresh
+    this.logger.log(`[YOUTUBE_AUTH] Tokens récupérés depuis la base de données pour user=${userId}`);
+    this.logger.log(`[YOUTUBE_AUTH] Détails tokens - access_token: ${tokens.access_token ? 'présent' : 'manquant'}, refresh_token: ${tokens.refresh_token ? 'présent' : 'manquant'}, expires_at: ${tokens.expires_at || 'non défini'}`);
+
+    // Vérifier et rafraîchir le token si nécessaire
     try {
-      const freshTokens = await this.tokenRefreshService.ensureFreshAccessToken(userId, tokens);
-      this.logger.log(`[DIAGNOSTIC] Token successfully refreshed/verified for user=${userId}`);
-      // Create client
-      return this.tokenRefreshService.createAuthorizedYouTubeClient(freshTokens);
+      // CORRECTION IMPORTANTE: La méthode ensureFreshAccessToken retourne maintenant l'objet complet de tokens
+      const freshTokens = await this.tokenRefreshService.ensureFreshAccessToken(
+        userId, 
+        tokens.access_token || '',
+        tokens.refresh_token || '',
+        tokens.expires_at || 0
+      );
+      
+      // Vérifier que nous avons bien reçu l'objet complet de tokens
+      if (!freshTokens || !freshTokens.access_token) {
+        throw new Error('Tokens invalides reçus après rafraîchissement');
+      }
+      
+      this.logger.log(`[YOUTUBE_AUTH] Token vérifié/rafraîchi avec succès pour user=${userId}`);
+      this.logger.log(`[YOUTUBE_AUTH] Détails tokens frais - access_token: ${freshTokens.access_token ? 'présent' : 'manquant'}, refresh_token: ${freshTokens.refresh_token ? 'présent' : 'manquant'}, expires_at: ${freshTokens.expires_at || 'non défini'}`);
+      
+      // Créer le client avec les tokens frais COMPLETS (access_token ET refresh_token)
+      const client = this.tokenRefreshService.createAuthorizedYouTubeClient(freshTokens);
+      
+      // Valider que le client a été créé avec succès
+      if (!client) {
+        throw new Error('Échec de création du client YouTube avec les tokens');
+      }
+      
+      this.logger.log(`[YOUTUBE_AUTH] Client YouTube créé avec succès pour user=${userId}`);
+      return client;
     } catch (err) {
-      this.logger.error(`[DIAGNOSTIC] Error refreshing token for user=${userId}: ${err.message}`, err.stack);
+      this.logger.error(`[YOUTUBE_AUTH] Erreur rafraîchissement token pour user=${userId}: ${err.message}`, err.stack);
       if (
         err.message.includes('invalid_grant') ||
         err.message.includes('Invalid Credentials') ||
         err.message.includes('401') ||
-        err.message.includes('403')
+        err.message.includes('403') ||
+        err.message.includes('No access') ||
+        err.message.includes('refresh token')
       ) {
-        this.logger.warn(`[DIAGNOSTIC] Token invalid/expired for user=${userId}, revoking integration`);
+        this.logger.warn(`[YOUTUBE_AUTH] Token invalide/expiré pour user=${userId}, révocation en cours`);
         try {
           await this.youtubeAuthService.revokeIntegration(userId);
         } catch (revokeError) {
-          this.logger.error(`[DIAGNOSTIC] Error revoking integration: ${revokeError.message}`, revokeError.stack);
+          this.logger.error(`[YOUTUBE_AUTH] Erreur révocation: ${revokeError.message}`, revokeError.stack);
         }
         throw new UnauthorizedException('Token invalid, must reconnect YouTube');
       }
@@ -325,29 +481,14 @@ export class YouTubeDataService {
     }
   }
 
-  /**
-   * Weighted engagement scoring → text label.
-   */
-  private getEngagementLevel(normalizedScore: number): string {
-    if (normalizedScore >= 0.8) {
-      return 'Exceptionnel';
-    } else if (normalizedScore >= 0.6) {
-      return 'Excellent';
-    } else if (normalizedScore >= 0.4) {
-      return 'Très bon';
-    } else if (normalizedScore >= 0.2) {
-      return 'Bon';
-    } else if (normalizedScore >= 0.1) {
-      return 'Moyen';
-    } else {
-      return 'Faible';
-    }
-  }
+  // Supprimé - fonction déjà implémentée plus bas
 
   /**
    * Map raw YouTube video data to our internal DTO.
    */
   private mapToVideoDTO(item: any): VideoDTO {
+    this.logger.debug(`[MAPPING] Début transformation vidéo ${item?.id || 'unknown'}`);
+    
     if (!item) return {
       id: '',
       title: '',
@@ -365,31 +506,238 @@ export class YouTubeDataService {
       duration: '',
     };
 
-    const snippet = item.snippet || {};
-    const statistics = item.statistics || {};
-    const contentDetails = item.contentDetails || {};
+    try {
+      const snippet = item.snippet || {};
+      const statistics = item.statistics || {};
+      const contentDetails = item.contentDetails || {};
 
-    // pick best thumbnail
-    const thumbs = snippet.thumbnails || {};
-    const bestThumb = thumbs.maxres || thumbs.high || thumbs.medium || thumbs.default || {};
+      // pick best thumbnail
+      const thumbs = snippet.thumbnails || {};
+      const bestThumb = thumbs.maxres || thumbs.high || thumbs.medium || thumbs.default || {};
 
-    return {
-      id: item.id,
-      title: snippet.title || 'Sans titre',
-      description: snippet.description || '',
-      publishedAt: snippet.publishedAt || '',
-      thumbnailUrl: bestThumb.url || '',
-      channelId: snippet.channelId || '',
-      channelTitle: snippet.channelTitle || '',
-      stats: {
-        viewCount: parseInt(statistics.viewCount || '0', 10),
-        likeCount: parseInt(statistics.likeCount || '0', 10),
-        commentCount: parseInt(statistics.commentCount || '0', 10),
-        favoriteCount: parseInt(statistics.favoriteCount || '0', 10),
-      },
-      duration: contentDetails.duration || '',
-      tags: snippet.tags || [],
-    };
+      const dto = {
+        id: item.id,
+        title: snippet.title || 'Sans titre',
+        description: snippet.description || '',
+        publishedAt: snippet.publishedAt || new Date().toISOString(),
+        thumbnailUrl: bestThumb.url || '',
+        channelId: snippet.channelId || '',
+        channelTitle: snippet.channelTitle || '',
+        stats: {
+          viewCount: parseInt(statistics.viewCount || '0', 10),
+          likeCount: parseInt(statistics.likeCount || '0', 10),
+          commentCount: parseInt(statistics.commentCount || '0', 10),
+          favoriteCount: parseInt(statistics.favoriteCount || '0', 10),
+        },
+        duration: contentDetails.duration || 'PT0S',
+        tags: snippet.tags || [],
+      };
+      
+      this.logger.debug(`[MAPPING] Transformation réussie de la vidéo ${item.id}`);
+      return dto;
+    } catch (error) {
+      this.logger.error(`[MAPPING] ERREUR transformation vidéo ${item?.id || 'unknown'}: ${error.message}`);
+      return {
+        id: item?.id || 'unknown',
+        title: 'Erreur de conversion',
+        description: 'Erreur lors de la récupération des données',
+        publishedAt: new Date().toISOString(),
+        thumbnailUrl: '',
+        channelId: '',
+        channelTitle: '',
+        duration: 'PT0S',
+        stats: { viewCount: 0, likeCount: 0, commentCount: 0, favoriteCount: 0 }
+      };
+    }
+  }
+
+  /**
+   * Détermine le niveau d'engagement d'une vidéo en fonction de son score normalisé
+   */
+  private getEngagementLevel(normalizedScore: number): string {
+    if (normalizedScore >= 0.8) {
+      return 'Exceptionnel';
+    } else if (normalizedScore >= 0.6) {
+      return 'Excellent';
+    } else if (normalizedScore >= 0.4) {
+      return 'Très bon';
+    } else if (normalizedScore >= 0.2) {
+      return 'Bon'; 
+    } else if (normalizedScore >= 0.1) {
+      return 'Moyen';
+    } else {
+      return 'Faible';
+    }
+  }
+
+  /**
+   * Récupère les statistiques analytiques avancées pour une vidéo spécifique
+   * @param userId ID de l'utilisateur propriétaire de la vidéo
+   * @param videoId ID de la vidéo YouTube
+   * @param startDate Date de début pour les statistiques (format YYYY-MM-DD)
+   * @param endDate Date de fin pour les statistiques (format YYYY-MM-DD)
+   * @returns Objet contenant les statistiques analytiques de la vidéo
+   */
+  async getVideoAnalytics(userId: string, videoId: string, startDate?: string, endDate?: string): Promise<any> {
+    // Dates par défaut: derniers 30 jours
+    const now = new Date();
+    const defaultEndDate = now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    now.setDate(now.getDate() - 30);
+    const defaultStartDate = now.toISOString().split('T')[0];
+
+    // Utiliser les dates fournies ou les dates par défaut
+    const actualStartDate = startDate || defaultStartDate;
+    const actualEndDate = endDate || defaultEndDate;
+
+    this.logger.log(`Récupération des analytics pour la vidéo ${videoId} (${actualStartDate} au ${actualEndDate})`);
+
+    try {
+      // Obtenir un client YouTube autorisé
+      const tokens = await this.integrationService.getIntegrationConfig(userId, 'youtube');
+      if (!tokens || !tokens.access_token) {
+        throw new UnauthorizedException('No valid token to access YouTube Analytics');
+      }
+
+      // Vérifier et rafraîchir le token si nécessaire
+      this.logger.log(`[ANALYTICS] Vérification/rafraîchissement du token pour user=${userId} avant appel API Analytics`);
+      const freshTokens = await this.tokenRefreshService.ensureFreshAccessToken(
+        userId,
+        tokens.access_token || '',
+        tokens.refresh_token || '',
+        tokens.expires_at || 0
+      );
+      
+      // CORRECTION: Utiliser l'objet complet de tokens frais (et non juste la chaîne access_token)
+      this.logger.log(`[ANALYTICS] Création du client Analytics avec des tokens valides pour user=${userId}`);
+      this.logger.log(`[ANALYTICS] Détails tokens - access_token: ${freshTokens.access_token ? 'présent' : 'manquant'}, refresh_token: ${freshTokens.refresh_token ? 'présent' : 'manquant'}, expires_at: ${freshTokens.expires_at || 'non défini'}`);
+      
+      // CORRECTION: Passage correct de l'objet tokens complet avec access_token ET refresh_token
+      const analyticsClient = this.tokenRefreshService.createAuthorizedYouTubeAnalyticsClient(freshTokens);
+
+      // Faire la requête à l'API YouTube Analytics
+      this.logger.log(`[ANALYTICS] Appel API YouTube Analytics pour vidéo ${videoId}`);
+      
+      // CORRECTION: Métriques valides (suppression de 'dislikes' qui n'est plus disponible)
+      // AJOUT: Nouvelles métriques demandées (retention, abonnés, partages, métriques cartes/fiches)
+      const response = await analyticsClient.reports.query({
+        ids: 'channel==MINE',
+        startDate: actualStartDate,
+        endDate: actualEndDate,
+        metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,comments,subscribersGained,shares,averageViewPercentage,cardClickRate,cardClicks,cardImpressions',
+        dimensions: 'video',
+        filters: `video==${videoId}`,
+      });
+
+      this.logger.debug(`Réponse API YouTube Analytics: ${JSON.stringify(response.data)}`);
+
+      if (!response.data || !response.data.rows || response.data.rows.length === 0) {
+        this.logger.warn(`Aucune donnée analytique trouvée pour la vidéo ${videoId}`);
+        return {
+          // Métriques de base
+          views: 0,
+          watchTimeMinutes: 0,
+          averageViewDuration: 0,
+          likes: 0,
+          comments: 0,
+          
+          // Nouvelles métriques ajoutées - valeurs par défaut
+          subscribersGained: 0,
+          shares: 0,
+          averageViewPercentage: 0,
+          cardClickRate: 0,
+          cardClicks: 0,
+          cardImpressions: 0,
+          
+          period: {
+            startDate: actualStartDate,
+            endDate: actualEndDate,
+          }
+        };
+      }
+
+      // Extraire les données pertinentes de la réponse
+      const videoData = response.data.rows.find(row => row[0] === videoId);
+      if (!videoData) {
+        this.logger.warn(`Vidéo ${videoId} non trouvée dans les résultats analytiques`);
+        return {
+          // Métriques de base
+          views: 0,
+          watchTimeMinutes: 0,
+          averageViewDuration: 0,
+          likes: 0,
+          comments: 0,
+          
+          // Nouvelles métriques ajoutées - valeurs par défaut
+          subscribersGained: 0,
+          shares: 0,
+          averageViewPercentage: 0,
+          cardClickRate: 0,
+          cardClicks: 0,
+          cardImpressions: 0,
+          
+          period: {
+            startDate: actualStartDate,
+            endDate: actualEndDate,
+          }
+        };
+      }
+
+      // Structure des données depend de l'ordre des métriques demandées
+      // MISE u00c0 JOUR: Ordre complet avec les nouvelles métriques ajoutées
+      // [videoId, views, watchTimeMinutes, avgViewDuration, likes, comments, subscribersGained, shares, averageViewPercentage, cardClickRate, cardClicks, cardImpressions]
+      const [
+        videoIdResult, 
+        views, 
+        watchTimeMinutes, 
+        avgViewDuration, 
+        likes, 
+        comments, 
+        subscribersGained, 
+        shares, 
+        averageViewPercentage, 
+        cardClickRate, 
+        cardClicks, 
+        cardImpressions
+      ] = videoData;
+
+      const analyticsResult = {
+        views: parseInt(views || '0', 10),
+        watchTimeMinutes: parseFloat(watchTimeMinutes || '0'),
+        averageViewDuration: parseFloat(avgViewDuration || '0'),
+        likes: parseInt(likes || '0', 10),
+        comments: parseInt(comments || '0', 10),
+        // Nouvelles métriques ajoutées
+        subscribersGained: parseInt(subscribersGained || '0', 10),
+        shares: parseInt(shares || '0', 10),
+        averageViewPercentage: parseFloat(averageViewPercentage || '0'),
+        cardClickRate: parseFloat(cardClickRate || '0'),
+        cardClicks: parseInt(cardClicks || '0', 10),
+        cardImpressions: parseInt(cardImpressions || '0', 10),
+        period: {
+          startDate: actualStartDate,
+          endDate: actualEndDate,
+        }
+      };
+
+      this.logger.log(`Statistiques obtenues pour vidéo ${videoId}: ${JSON.stringify(analyticsResult)}`);
+      return analyticsResult;
+
+    } catch (error) {
+      this.logger.error(`Erreur lors de la récupération des analytics pour vidéo ${videoId}: ${error.message}`, error.stack);
+      
+      // Vérifier si l'erreur est liée aux tokens ou quota
+      if (error.message.includes('401') || error.message.includes('403')) {
+        this.logger.warn(`Erreur d'autorisation pour l'API Analytics. Vérification/rafraîchissement des tokens...`);
+        throw new UnauthorizedException('Erreur d\'authentification YouTube Analytics');
+      }
+      
+      if (error.message.includes('403') && error.message.includes('quota')) {
+        this.logger.warn(`Quota d'API YouTube Analytics dépassé`);
+        throw new Error('Quota YouTube Analytics dépassé, veuillez réessayer plus tard');
+      }
+      
+      throw error;
+    }
   }
 
   /**

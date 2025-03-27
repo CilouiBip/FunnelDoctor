@@ -3,6 +3,7 @@
  */
 export interface YouTubeVideo {
   id: string;
+  dbId?: string; // ID dans Supabase
   snippet: {
     title: string;
     description: string;
@@ -21,6 +22,34 @@ export interface YouTubeVideo {
     likeCount: string;
     favoriteCount: string;
     commentCount: string;
+  };
+  // YouTube Analytics métriques avancées
+  analytics?: {
+    views?: number;
+    watchTimeMinutes?: number;
+    averageViewDuration?: number;
+    likes?: number;
+    comments?: number;
+    // Nouvelles métriques de croissance
+    subscribersGained?: number;
+    shares?: number;
+    // Métrique de rétention
+    averageViewPercentage?: number;
+    // Métriques des cartes/fiches
+    cardClickRate?: number;
+    cardClicks?: number;
+    cardImpressions?: number;
+    // Période d'analyse
+    period?: {
+      startDate?: string;
+      endDate?: string;
+    };
+  };
+  // Métriques calculées d'engagement
+  stats?: {
+    engagementRate?: number;
+    normalizedEngagementRate?: number;
+    engagementLevel?: string;
   };
   // Additional properties for FunnelDoctor metrics
   funnelMetrics?: {
@@ -52,7 +81,10 @@ export interface YouTubeResponse {
     totalResults: number;
     resultsPerPage: number;
   };
-  items: YouTubeVideo[];
+  // Propriété selon le format de l'API YouTube standard
+  items?: YouTubeVideo[];
+  // Propriété selon le format renvoyé par notre backend
+  videos: YouTubeVideo[];
 }
 
 /**

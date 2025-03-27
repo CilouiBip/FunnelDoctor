@@ -3,8 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchVideos, checkYouTubeConnection, connectYouTubeAccount, disconnectYouTubeAccount } from '../../../services/youtube.service';
 import { YouTubeVideo } from '../../../types/youtube.types';
-import VideoCard from '../../../components/youtube/VideoCard';
 import toast from 'react-hot-toast';
+import useYouTubeAnalytics from '../../../hooks/useYouTubeAnalytics';
+import { formatNumber } from '../../../utils/formatters';
+import StatCard from '../../../components/youtube/StatCard';
+import VideoTable from '../../../components/youtube/VideoTable';
+import DataDebugger from '../../../components/debug/DataDebugger';
 
 export default function VideoPerformancePage() {
   const [dateRange, setDateRange] = useState('last30');
@@ -14,10 +18,21 @@ export default function VideoPerformancePage() {
   const [pageToken, setPageToken] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   
-  // Fetch YouTube connection status and videos
   // Référence pour éviter les initialisations multiples en mode développement
   const initializationRef = useRef(false);
   
+  // Fonction pour extraire le token JWT du hash URL après redirection OAuth
+  const getTokenFromHash = () => {
+    if (typeof window === 'undefined') return null;
+    
+    const hash = window.location.hash;
+    if (!hash) return null;
+    
+    // Format attendu: #token=xxx
+    const match = hash.match(/token=([^&]*)/);
+    return match ? match[1] : null;
+  };
+
   useEffect(() => {
     // Vérifier si l'initialisation a déjà été faite
     if (initializationRef.current) {
@@ -27,21 +42,40 @@ export default function VideoPerformancePage() {
     
     const initializeData = async () => {
       try {
-        console.log("[DEBUG] Démarrage initializeData dans useEffect");
+        console.log("[DEBUG] Démarrage initialisation dans useEffect");
         initializationRef.current = true; // Marquer comme initialisé
         
-        // Check if YouTube account is connected
-        console.log("[DEBUG] Avant appel à checkYouTubeConnection");
+        // 1. Vérifier si un token JWT est présent dans le hash (callback OAuth)
+        const hashToken = getTokenFromHash();
+        if (hashToken) {
+          console.log("[DEBUG] Token JWT détecté dans le hash URL");
+          // Mettre à jour le token dans localStorage
+          localStorage.setItem('accessToken', hashToken);
+          toast.success("Session mise à jour avec succès");
+          // Nettoyer l'URL (enlever le hash)
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        
+        // 2. Vérifier si youtube_connected=true est présent dans l'URL
+        const params = new URLSearchParams(window.location.search);
+        const youtubeConnected = params.get('youtube_connected');
+        if (youtubeConnected === 'true') {
+          console.log("[DEBUG] Paramètre youtube_connected=true détecté");
+          toast.success("Compte YouTube connecté avec succès !");
+          // Nettoyer l'URL (enlever le paramètre)
+          params.delete('youtube_connected');
+          const newUrl = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+          window.history.replaceState(null, '', newUrl);
+        }
+        
+        // 3. Vérifier l'état de connexion YouTube
+        console.log("[DEBUG] Vérification de la connexion YouTube");
         const connected = await checkYouTubeConnection();
-        console.log("[DEBUG] État de connexion YouTube:", { 
-          connected, 
-          previousState: isConnected,
-          timestamp: new Date().toISOString() 
-        });
+        console.log("[DEBUG] État de connexion YouTube:", { connected });
         
         setIsConnected(connected);
-        console.log("[DEBUG] Après setIsConnected:", connected);
         
+        // 4. Charger les vidéos si connecté
         if (connected) {
           console.log("[DEBUG] YouTube connecté, chargement des vidéos");
           await loadVideos();
@@ -50,13 +84,12 @@ export default function VideoPerformancePage() {
           setLoading(false);
         }
       } catch (err) {
-        console.error('[DEBUG] Erreur initializeData:', err);
-        setError('Failed to connect to YouTube. Please try again later.');
+        console.error('[DEBUG] Erreur initialisation:', err);
+        setError('Erreur de connexion à YouTube. Veuillez réessayer plus tard.');
         setLoading(false);
       }
     };
     
-    console.log("[DEBUG] Création de l'effet, isConnected:", isConnected);
     initializeData();
   }, []);
   
@@ -64,21 +97,84 @@ export default function VideoPerformancePage() {
   const loadVideos = async (token?: string) => {
     try {
       setLoading(true);
+      // LOGS DE DÉBOGAGE: État avant chargement
+      console.log("[FRONTEND-STATE] État avant chargement:", {
+        videosCount: videos.length,  
+        isLoading: loading, 
+        isConnected: isConnected
+      });
+      console.log("[YOUTUBE] Chargement des vidéos avec pageToken:", token || 'INITIAL');
+      
       const response = await fetchVideos(token);
+      
+      // LOGS DE DÉBOGAGE: Réponse complète
+      console.log("[FRONTEND-FETCH] Réponse API BRUTE complète:", response);
+      console.log("[FRONTEND-FETCH] Structure de la réponse:", {
+        hasVideos: !!response.videos,
+        videosLength: response.videos?.length || 0,
+        videosType: response.videos ? typeof response.videos : 'undefined',
+        isVideosArray: response.videos ? Array.isArray(response.videos) : false,
+        responseKeys: Object.keys(response),
+        pagination: {
+          nextToken: response.nextPageToken,
+          totalResults: response.pageInfo?.totalResults,
+          resultsPerPage: response.pageInfo?.resultsPerPage
+        }
+      });
+      
+      // Afficher plus de détails sur les données analytiques de la première vidéo pour debug
+      if (response.videos?.length > 0) {
+        const firstVideo = response.videos[0];
+        console.log("[FRONTEND-FETCH] Exemple de données vidéo:", {
+          id: firstVideo.id,
+          title: firstVideo.snippet?.title,
+          stats: firstVideo.statistics,
+          analytics: {
+            watchTimeMinutes: firstVideo.analytics?.watchTimeMinutes,
+            averageViewDuration: firstVideo.analytics?.averageViewDuration,
+            views: firstVideo.analytics?.views,
+            subscribersGained: firstVideo.analytics?.subscribersGained,
+            shares: firstVideo.analytics?.shares,
+            averageViewPercentage: firstVideo.analytics?.averageViewPercentage,
+            cardClickRate: firstVideo.analytics?.cardClickRate,
+            cardClicks: firstVideo.analytics?.cardClicks,
+            cardImpressions: firstVideo.analytics?.cardImpressions,
+          }
+        });
+      } else {
+        // LOGS DE DÉBOGAGE: Aucune vidéo trouvée
+        console.warn("[FRONTEND-FETCH] Aucune vidéo trouvée dans la réponse!");
+        console.log("[FRONTEND-FETCH] Détails de la réponse vide:", {
+          responseType: typeof response,
+          responseVideosType: typeof response.videos,
+          responseVideosValue: response.videos
+        });
+      }
+      
+      // LOGS DE DÉBOGAGE: Données avant mise à jour de l'état
+      const videosToSet = response.videos || [];
+      console.log("[FRONTEND-STATE] Données avant setVideos:", videosToSet);
+      console.log("[FRONTEND-STATE] Nombre de vidéos avant setVideos:", videosToSet.length);
       
       if (token) {
         // Append videos for pagination
-        setVideos(prev => [...prev, ...(response.items || [])]);
+        setVideos(prev => {
+          const newState = [...prev, ...videosToSet];
+          console.log("[FRONTEND-STATE] Nouveau state (pagination):", newState.length, "vidéos");
+          return newState;
+        });
       } else {
         // Replace videos for initial load or refresh
-        setVideos(response.items || []);
+        setVideos(videosToSet);
+        console.log("[FRONTEND-STATE] Nouveau state (remplacement complet):", videosToSet.length, "vidéos");
       }
       
       setPageToken(response.nextPageToken || '');
       setLoading(false);
     } catch (err) {
-      console.error('Failed to load videos:', err);
-      setError('Failed to load videos. Please try again later.');
+      console.error('[ERREUR] Impossible de charger les vidéos:', err);
+      console.error('[FRONTEND-FETCH] Détails de l\'erreur:', err.message, err.stack);
+      setError('Impossible de charger les vidéos. Veuillez réessayer plus tard.');
       setLoading(false);
     }
   };
@@ -115,303 +211,218 @@ export default function VideoPerformancePage() {
     }
   };
   
-  // Sample video data structure for UI development/testing when API is not available
-  // Remarque: Ces donnu00e9es mock ne sont plus utilisu00e9es mais conservu00e9es pour ru00e9fu00e9rence
-  /* const mockVideos = [
-    {
-      id: 1,
-      thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
-      title: 'How to Grow Your Business with YouTube',
-      publishedDate: '2025-03-01',
-      views: 5423,
-      clickRate: 3.2,
-      leads: 78,
-      conversionRate: 1.4,
-      earnings: 1240
-    },
-    {
-      id: 2,
-      thumbnail: 'https://i.ytimg.com/vi/xvFZjo5PgG0/mqdefault.jpg',
-      title: 'Top 5 Marketing Strategies for 2025',
-      publishedDate: '2025-02-15',
-      views: 12893,
-      clickRate: 4.1,
-      leads: 184,
-      conversionRate: 1.8,
-      earnings: 3420
-    },
-    {
-      id: 3,
-      thumbnail: 'https://i.ytimg.com/vi/6_b7RDuLwcI/mqdefault.jpg',
-      title: 'Content Creation Masterclass',
-      publishedDate: '2025-01-22',
-      views: 7354,
-      clickRate: 2.8,
-      leads: 95,
-      conversionRate: 1.3,
-      earnings: 1680
-    },
-    {
-      id: 4,
-      thumbnail: 'https://i.ytimg.com/vi/jNQXAC9IVRw/mqdefault.jpg',
-      title: 'SEO Secrets Revealed',
-      publishedDate: '2025-01-05',
-      views: 9276,
-      clickRate: 3.5,
-      leads: 132,
-      conversionRate: 1.6,
-      earnings: 2350
-    },
-  ]; */
-
+  // Calcul des métriques agrégées à partir des vidéos disponibles
+  const aggregatedMetrics = useYouTubeAnalytics(videos);
+  
+  // LOGS DE DÉBOGAGE: État au moment du rendu
+  console.log("[FRONTEND-RENDER] État videos au rendu:", {
+    count: videos.length,
+    isConnected: isConnected,
+    isLoading: loading,
+    hasError: !!error,
+    firstVideoId: videos[0]?.id || 'none',
+    pageToken: pageToken || 'none'
+  });
+  
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">Video Performance</h1>
-        <p className="text-text-secondary">Analyze the performance of your YouTube videos and their conversion metrics</p>
-      </div>
-
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex space-x-2">
-          <button 
-            className={`tab ${dateRange === 'last7' ? 'active' : ''}`} 
-            onClick={() => setDateRange('last7')}
-          >
-            Last 7 days
-          </button>
-          <button 
-            className={`tab ${dateRange === 'last30' ? 'active' : ''}`} 
-            onClick={() => setDateRange('last30')}
-          >
-            Last 30 days
-          </button>
-          <button 
-            className={`tab ${dateRange === 'last90' ? 'active' : ''}`} 
-            onClick={() => setDateRange('last90')}
-          >
-            Last 90 days
-          </button>
-          <button 
-            className={`tab ${dateRange === 'year' ? 'active' : ''}`} 
-            onClick={() => setDateRange('year')}
-          >
-            This year
-          </button>
-          <button 
-            className={`tab ${dateRange === 'custom' ? 'active' : ''}`} 
-            onClick={() => setDateRange('custom')}
-          >
-            Custom
-          </button>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <input 
-              type="text" 
-              className="input-field pl-10" 
-              placeholder="Search videos..."
-            />
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
+    <div className="py-4 px-1">
+      <h1 className="text-2xl font-semibold mb-4">Tableau de bord YouTube</h1>
+      
+      {/* Connexion YouTube */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-medium">Compte YouTube</h2>
+            <p className="text-gray-600 mt-1">
+              {isConnected ? 
+                "Votre compte YouTube est connecté. Vous pouvez consulter les statistiques de performance." : 
+                "Connectez votre compte YouTube pour voir vos statistiques."}
+            </p>
           </div>
-          <button className="btn-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5 mr-2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Add Video
-          </button>
-        </div>
-      </div>
-
-      {/* Show connection prompt if YouTube is not connected */}
-      {!isConnected && (
-        <div className="mb-8 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h2 className="text-xl font-medium mb-2">Connect Your YouTube Account</h2>
-          <p className="text-gray-600 mb-4">Connect your YouTube account to see your video performance metrics.</p>
-          <button 
-            onClick={handleConnectYouTube}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-          >
-            Connect YouTube
-          </button>
-        </div>
-      )}
-      
-      {/* Error message if any */}
-      {error && (
-        <div className="mb-8 bg-red-50 p-4 rounded-md border border-red-200 text-red-700">
-          {error}
-        </div>
-      )}
-      
-      {/* Loading indicator */}
-      {loading && videos.length === 0 && (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      )}
-      
-      {/* Disconnect YouTube button (only shown when connected) */}
-      {isConnected && (
-        <div className="mb-4 flex justify-end">
-          <button
-            onClick={handleDisconnectYouTube}
-            disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                En cours...
-              </>
+          <div>
+            {isConnected ? (
+              <button
+                onClick={handleDisconnectYouTube}
+                className="bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                Déconnecter
+              </button>
             ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
-                </svg>
-                Déconnecter YouTube
-              </>
+              <button
+                onClick={handleConnectYouTube}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Connecter YouTube
+              </button>
             )}
-          </button>
-        </div>
-      )}
-
-      {/* Performance summary cards */}
-      {isConnected && videos.length > 0 && (
-        <div className="grid grid-cols-4 gap-6 mb-8">
-        <div className="stats-card">
-          <div className="stats-card-header">
-            <h3 className="stats-card-title">Total Views</h3>
-          </div>
-          <div className="stats-card-value">34,946</div>
-          <div className="stats-card-change positive">
-            <span className="change-value">↑ 12.4%</span>
           </div>
         </div>
-
-        <div className="stats-card">
-          <div className="stats-card-header">
-            <h3 className="stats-card-title">Avg. Click Rate</h3>
-          </div>
-          <div className="stats-card-value">3.5%</div>
-          <div className="stats-card-change positive">
-            <span className="change-value">↑ 0.8%</span>
-          </div>
-        </div>
-
-        <div className="stats-card">
-          <div className="stats-card-header">
-            <h3 className="stats-card-title">Total Leads</h3>
-          </div>
-          <div className="stats-card-value">489</div>
-          <div className="stats-card-change positive">
-            <span className="change-value">↑ 23.5%</span>
-          </div>
-        </div>
-
-        <div className="stats-card">
-          <div className="stats-card-header">
-            <h3 className="stats-card-title">Revenue</h3>
-          </div>
-          <div className="stats-card-value">$8,690</div>
-          <div className="stats-card-change positive">
-            <span className="change-value">↑ 16.2%</span>
-          </div>
-        </div>
-        </div>
-      )}
-
-      {/* Videos table or grid view */}
-      {isConnected && videos.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Video</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Published</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Views</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Click Rate</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Leads</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Conv. Rate</th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-text-secondary">Earnings</th>
-              <th className="px-6 py-4 text-right text-sm font-medium text-text-secondary">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {videos.map((video) => (
-              <tr key={video.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-16 h-9 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                      <img 
-                        src={video.snippet?.thumbnails?.medium?.url || ''}
-                        alt={video.snippet?.title || 'YouTube Video'} 
-                        className="w-full h-full object-cover" 
-                      />
-                    </div>
-                    <span className="font-medium">{video.snippet?.title || 'Untitled Video'}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  {video.snippet?.publishedAt ? new Date(video.snippet.publishedAt).toLocaleDateString() : 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  {video.statistics?.viewCount ? parseInt(video.statistics.viewCount).toLocaleString() : 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  {video.funnelMetrics?.clickRate ? `${video.funnelMetrics.clickRate}%` : 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  {video.funnelMetrics?.leads || 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  {video.funnelMetrics?.conversionRate ? `${video.funnelMetrics.conversionRate}%` : 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-text-secondary">
-                  ${video.funnelMetrics?.earnings || 'N/A'}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button className="text-gray-400 hover:text-primary transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
-                    </svg>
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        
-        {/* Pagination */}
-        {pageToken && (
-          <div className="p-4 border-t border-gray-100 flex justify-center">
-            <button 
-              onClick={handleLoadMore}
-              disabled={loading}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Loading...' : 'Load More Videos'}
-            </button>
-          </div>
-        )}
       </div>
-      ) : isConnected && videos.length === 0 && !loading ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center">
-          <h3 className="text-lg font-medium mb-2">No Videos Found</h3>
-          <p className="text-gray-500 mb-4">We couldn't find any videos for your YouTube account.</p>
-          <button 
-            onClick={() => loadVideos()}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition-colors"
+
+      {/* Contenu principal - conditionnellement affiché si connecté */}
+      {isConnected ? (
+        <>
+          {/* En-tête et filtres */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <p className="text-gray-700">Période: <span className="font-medium">30 derniers jours</span></p>
+            </div>
+            <div>
+              <button
+                onClick={() => loadVideos()}
+                className="text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Actualiser</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Composant temporaire de débogage pour afficher la structure complète */}
+          {videos.length > 0 && !loading && !error && (
+            <DataDebugger
+              data={videos[0]}
+              title="Premier video - Structure complète"
+              expanded={false}
+            />
+          )}
+          
+          {/* KPIs - Affichage des métriques agrégées */}
+          {videos.length > 0 && !loading && !error && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatCard
+                title="Total Views"
+                value={formatNumber(aggregatedMetrics.totalViews)}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                }
+                color="blue"
+                tooltip="Total number of views across all videos"
+              />
+              
+              <StatCard
+                title="Avg Engagement"
+                value={`${(aggregatedMetrics.avgEngagementRate * 100).toFixed(2)}%`}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                  </svg>
+                }
+                color="purple"
+                tooltip="Average engagement rate (interactions/views)"
+              />
+              
+              <StatCard
+                title="Avg Retention"
+                value={`${aggregatedMetrics.avgViewPercentage.toFixed(2)}%`}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                }
+                color="green"
+                tooltip="Average percentage of video watched by viewers"
+              />
+              
+              <StatCard
+                title="New Subscribers"
+                value={formatNumber(aggregatedMetrics.totalSubscribersGained)}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                }
+                color="red"
+                tooltip="Total new subscribers from these videos"
+              />
+            </div>
+          )}
+          
+          {/* Debugger pour les métriques agrégées */}
+          {videos.length > 0 && !loading && !error && (
+            <DataDebugger
+              data={aggregatedMetrics}
+              title="Métriques agrégées calculées"
+              expanded={false}
+            />
+          )}
+
+          {/* Liste des vidéos */}
+          {loading && videos.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center min-h-[300px] flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500 mb-4"></div>
+                <p>Chargement des vidéos...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center min-h-[300px] flex flex-col justify-center items-center">
+              <div className="bg-red-100 text-red-600 p-4 rounded-lg mb-4 inline-block">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-red-600 font-medium mb-2">Erreur</p>
+              <p className="text-gray-600">{error}</p>
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center min-h-[300px] flex flex-col justify-center items-center">
+              <div className="bg-yellow-100 text-yellow-600 p-4 rounded-lg mb-4 inline-block">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-lg font-medium mb-2">Aucune vidéo trouvée</p>
+              <p className="text-gray-600">Vous n'avez pas encore publié de vidéos sur votre chaîne YouTube.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Tableau de vidéos amélioré avec tous les nouveaux indicateurs */}
+              <VideoTable 
+                videos={videos} 
+                loading={loading}
+                onViewDetails={(videoId) => console.log('View details for:', videoId)}
+              />
+              
+              {/* Pagination */}
+              {pageToken && (
+                <div className="flex justify-center mt-6">
+                  <button
+                    onClick={handleLoadMore}
+                    className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                    disabled={loading}
+                  >
+                    {loading ? 'Chargement...' : 'Charger plus de vidéos'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center min-h-[300px] flex flex-col justify-center items-center">
+          <div className="bg-yellow-100 text-yellow-600 p-4 rounded-lg mb-4 inline-block">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-lg font-medium mb-2">Connectez votre compte YouTube</p>
+          <p className="text-gray-600 mb-6 max-w-md">
+            Pour voir vos statistiques YouTube, vous devez d'abord autoriser FunnelDoctor à accéder à vos données. Le processus est sécurisé et vous pouvez révoquer l'accès à tout moment.
+          </p>
+          <button
+            onClick={handleConnectYouTube}
+            className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
           >
-            Refresh
+            Connecter YouTube
           </button>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

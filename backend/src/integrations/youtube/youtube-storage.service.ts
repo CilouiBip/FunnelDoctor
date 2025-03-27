@@ -49,8 +49,8 @@ export class YouTubeStorageService {
           throw updateError;
         }
 
-        // Stocker les nouvelles statistiques
-        await this.storeVideoStats(existingVideo.id, video.stats);
+        // Stocker les nouvelles statistiques et données analytiques si disponibles
+        await this.storeVideoStats(existingVideo.id, video.stats, video.analytics);
 
         return existingVideo.id;
       } else {
@@ -77,8 +77,8 @@ export class YouTubeStorageService {
           throw insertError;
         }
 
-        // Stocker les statistiques initiales
-        await this.storeVideoStats(insertData.id, video.stats);
+        // Stocker les statistiques initiales et données analytiques si disponibles
+        await this.storeVideoStats(insertData.id, video.stats, video.analytics);
 
         return insertData.id;
       }
@@ -89,12 +89,15 @@ export class YouTubeStorageService {
   }
 
   /**
-   * Stocke les statistiques d'une vidéo
+   * Stocke les statistiques d'une vidéo et ses données analytiques si disponibles
    * @param dbVideoId ID de la vidéo dans notre base de données
-   * @param stats Statistiques de la vidéo
+   * @param stats Statistiques de base de la vidéo (vues, likes, commentaires)
+   * @param analytics Données analytiques avancées (optionnel)
    */
-  private async storeVideoStats(dbVideoId: string, stats: any): Promise<void> {
+  async storeVideoStats(dbVideoId: string, stats: any, analytics?: any): Promise<void> {
     try {
+      this.logger.debug(`Stockage des statistiques pour vidéo dbId=${dbVideoId}`);
+
       // Calcul pondéré de l'engagement (même formule que dans YouTubeDataService)
       const likeWeight = 1;
       const commentWeight = 5;
@@ -107,24 +110,53 @@ export class YouTubeStorageService {
       // Normalisation du score (considérant qu'un ratio de 0.1 est déjà très bon)
       const normalizedEngagement = Math.min(engagementScore / 0.1, 1);
 
+      // Données de base pour l'insertion
+      const statsData = {
+        video_id: dbVideoId,
+        view_count: stats.viewCount,
+        like_count: stats.likeCount,
+        comment_count: stats.commentCount,
+        favorite_count: stats.favoriteCount,
+        engagement_rate: engagementScore,
+        normalized_engagement_rate: normalizedEngagement,
+        engagement_level: this.getEngagementLevel(normalizedEngagement),
+        fetched_at: new Date().toISOString(),
+      };
+
+      // Ajout des données analytiques si disponibles
+      if (analytics) {
+        this.logger.debug(`Ajout des données analytiques pour vidéo dbId=${dbVideoId}`);
+        Object.assign(statsData, {
+          // Métriques existantes
+          watch_time_minutes: analytics.watchTimeMinutes || 0,
+          average_view_duration: analytics.averageViewDuration || 0,
+          analytics_period_start: analytics.period?.startDate || null,
+          analytics_period_end: analytics.period?.endDate || null,
+          
+          // Nouvelles métriques ajoutées
+          subscribers_gained: analytics.subscribersGained || 0,
+          shares: analytics.shares || 0,
+          average_view_percentage: analytics.averageViewPercentage || 0,
+          card_click_rate: analytics.cardClickRate || 0,
+          card_clicks: analytics.cardClicks || 0,
+          card_impressions: analytics.cardImpressions || 0,
+        });
+        
+        // Log des métriques analytiques pour debugging
+        this.logger.debug(`Métriques analytiques: retention=${analytics.averageViewPercentage || 0}%, abonnés=${analytics.subscribersGained || 0}, partages=${analytics.shares || 0}`);
+        this.logger.debug(`Métriques cartes: CTR=${analytics.cardClickRate || 0}%, clics=${analytics.cardClicks || 0}, impressions=${analytics.cardImpressions || 0}`);
+      }
+
       const { error } = await this.supabaseService.getAdminClient()
         .from('youtube_video_stats')
-        .insert({
-          video_id: dbVideoId,
-          view_count: stats.viewCount,
-          like_count: stats.likeCount,
-          comment_count: stats.commentCount,
-          favorite_count: stats.favoriteCount,
-          engagement_rate: engagementScore,
-          normalized_engagement_rate: normalizedEngagement,
-          engagement_level: this.getEngagementLevel(normalizedEngagement),
-          fetched_at: new Date().toISOString(),
-        });
+        .insert(statsData);
 
       if (error) {
         this.logger.error(`Erreur lors du stockage des statistiques: ${error.message}`);
         throw error;
       }
+
+      this.logger.debug(`Statistiques stockées avec succès pour vidéo dbId=${dbVideoId}`);
     } catch (error) {
       this.logger.error(`Erreur lors du stockage des statistiques: ${error.message}`, error.stack);
       throw new Error(`Erreur lors du stockage des statistiques: ${error.message}`);

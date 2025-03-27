@@ -27,7 +27,7 @@ export class YouTubeDataController {
   ) {
     try {
       const userId = req.user.id;
-      this.logger.log(`Récupération des vidéos pour l'utilisateur ${userId}`);
+      this.logger.log(`[CONTROLLER] Récupération des vidéos pour l'utilisateur ${userId}`);
       
       // Convertir les paramètres en format approprié
       const options: VideoQueryOptions = {};
@@ -35,19 +35,15 @@ export class YouTubeDataController {
       if (pageToken) options.pageToken = pageToken;
       if (order) options.order = order;
       
-      // Si refresh est true, récupérer depuis l'API YouTube, sinon depuis la BDD
+      // CORRECTION IMPORTANTE: On appelle toujours getUserVideos (flux complet) au lieu de getStoredVideos
+      // Le paramètre refresh indique si on force une récupération depuis l'API YouTube
       const refreshFromApi = refresh === true || (typeof refresh === 'string' && (refresh === 'true' || refresh === ''));
       
-      if (refreshFromApi) {
-        this.logger.log(`Rafraîchissement des vidéos depuis l'API YouTube pour l'utilisateur ${userId}`);
-        return this.youtubeDataService.getUserVideos(userId, options, true);
-      } else {
-        this.logger.log(`Récupération des vidéos stockées en base de données pour l'utilisateur ${userId}`);
-        const videos = await this.youtubeDataService.getStoredVideos(userId, options.limit);
-        return { videos, nextPageToken: undefined };
-      }
+      this.logger.log(`[CONTROLLER] Appel getUserVideos (flux complet) avec refresh=${refreshFromApi} pour user=${userId}`);
+      // CORRECTION FINALE: Toujours stocker les données dans Supabase (storeInDb=true)
+      return this.youtubeDataService.getUserVideos(userId, options, true);
     } catch (error) {
-      this.logger.error(`Erreur lors de la récupération des vidéos: ${error.message}`);
+      this.logger.error(`[CONTROLLER] Erreur lors de la récupération des vidéos: ${error.message}`);
       throw error;
     }
   }

@@ -149,7 +149,71 @@ useEffect(() => {
   - Variable d'environnement YOUTUBE_REDIRECT_URI
   - Configuration Ngrok
 
-## 6. Maintenance et Mise u00e0 Jour
+## 6. Schu00e9mas de Donnu00e9es et Stockage
+
+### 6.1 Table `youtube_videos`
+
+Table principale stockant les informations de base des vidu00e9os.
+
+```sql
+create table youtube_videos (
+  id uuid default gen_random_uuid() not null primary key,
+  user_id uuid references auth.users not null,
+  video_id varchar not null,
+  title varchar not null,
+  description text,
+  published_at timestamp with time zone,
+  thumbnail_url varchar,
+  channel_id varchar,
+  channel_title varchar,
+  duration varchar,
+  tags jsonb default '[]'::jsonb,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  unique (user_id, video_id)
+);
+```
+
+### 6.2 Table `youtube_video_stats`
+
+Table stockant les statistiques et donnu00e9es analytiques des vidu00e9os.
+
+```sql
+create table youtube_video_stats (
+  id uuid default gen_random_uuid() not null primary key,
+  video_id uuid references youtube_videos not null,
+  view_count integer default 0,
+  like_count integer default 0,
+  comment_count integer default 0,
+  favorite_count integer default 0,
+  engagement_rate decimal default 0,
+  normalized_engagement_rate decimal default 0,
+  engagement_level varchar,
+  watch_time_minutes decimal default 0, -- YouTube Analytics
+  average_view_duration decimal default 0, -- YouTube Analytics
+  analytics_period_start date, -- Pu00e9riode d'analyse
+  analytics_period_end date, -- Pu00e9riode d'analyse
+  fetched_at timestamp with time zone default now(),
+  created_at timestamp with time zone default now()
+);
+```
+
+### 6.3 Mu00e9triques Analytiques Ru00e9cupu00e9ru00e9es
+
+#### YouTube Data API (statistiques de base)
+- `viewCount` : Nombre total de vues de la vidu00e9o
+- `likeCount` : Nombre total de likes de la vidu00e9o
+- `commentCount` : Nombre total de commentaires de la vidu00e9o
+- `favoriteCount` : Nombre d'utilisateurs ayant mis la vidu00e9o en favori
+
+#### YouTube Analytics API (mu00e9triques avancu00e9es)
+- `views` : Nombre de vues pendant la pu00e9riode d'analyse (30 derniers jours par du00e9faut)
+- `estimatedMinutesWatched` : Temps de visionnage estimu00e9 en minutes
+- `averageViewDuration` : Duru00e9e moyenne de visionnage en secondes
+- `likes` : Nombre de likes pendant la pu00e9riode d'analyse
+- `comments` : Nombre de commentaires pendant la pu00e9riode d'analyse
+
+## 7. Maintenance et Mise u00e0 Jour
 
 - Surveiller les u00e9vu00e9nements de ru00e9vocation de tokens via `oauth_events`
 - Implu00e9menter des mu00e9canismes de rafrau00eechissement automatique des tokens
