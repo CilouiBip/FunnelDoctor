@@ -30,20 +30,6 @@ export interface VideoDTO {
   duration: string;
   tags?: string[];
   dbId?: string; // ID in DB after storing
-  analytics?: {
-    watchTimeMinutes?: number;
-    averageViewDuration?: number;
-    averageViewPercentage?: number;
-    cardClickRate?: number;
-    cardClicks?: number;
-    cardImpressions?: number;
-    subscribersGained?: number;
-    shares?: number;
-    period?: {
-      startDate?: string;
-      endDate?: string;
-    };
-  };
 }
 
 /** Extended version of VideoDTO for analytics. */
@@ -315,25 +301,7 @@ export class YouTubeDataService {
 
     // Check expiration & refresh
     try {
-      // Du00e9composition du token pour passer les paramu00e8tres requis
-      const accessToken = tokens.access_token || '';
-      const refreshToken = tokens.refresh_token || '';
-      const expiresAt = tokens.expires_at || 0;
-      
-      this.logger.debug(`[DIAGNOSTIC] Tokens: access=${!!accessToken}, refresh=${!!refreshToken}, expires=${expiresAt}`);
-      
-      // Vu00e9rification que les tokens nu00e9cessaires sont pru00e9sents
-      if (!accessToken || !refreshToken) {
-        this.logger.error(`[DIAGNOSTIC] Missing tokens for user=${userId}: access=${!!accessToken}, refresh=${!!refreshToken}`);
-        throw new UnauthorizedException('Invalid YouTube authorization tokens');
-      }
-      
-      const freshTokens = await this.tokenRefreshService.ensureFreshAccessToken(
-        userId, 
-        accessToken, 
-        refreshToken, 
-        expiresAt
-      );
+      const freshTokens = await this.tokenRefreshService.ensureFreshAccessToken(userId, tokens);
       this.logger.log(`[DIAGNOSTIC] Token successfully refreshed/verified for user=${userId}`);
       // Create client
       return this.tokenRefreshService.createAuthorizedYouTubeClient(freshTokens);

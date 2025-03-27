@@ -25,6 +25,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { JwtExtractionMiddleware } from './common/middleware/jwt-extraction.middleware';
 import { join } from 'path';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { FunnelAnalyticsModule } from './funnel-analytics/funnel-analytics.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
     AnalyticsModule,
     WebhooksModule,
     IntegrationsModule,
+    FunnelAnalyticsModule,
     DebugModule.register(),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),

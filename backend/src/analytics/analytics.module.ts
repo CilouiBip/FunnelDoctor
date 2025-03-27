@@ -13,7 +13,9 @@ import { AnalyticsController } from './controllers/analytics.controller';
   imports: [
     SupabaseModule, // Du00e9pendance vers le module Supabase pour l'accu00e8s aux donnu00e9es
   ],
-  controllers: [AnalyticsController],
+  controllers: [
+    AnalyticsController
+  ],
   providers: [
     EventsAnalyticsService,
     FunnelAnalyticsService,
@@ -22,7 +24,7 @@ import { AnalyticsController } from './controllers/analytics.controller';
   exports: [
     EventsAnalyticsService,
     FunnelAnalyticsService,
-    LeadsAnalyticsService,
+    LeadsAnalyticsService
   ],
 })
 export class AnalyticsModule {}

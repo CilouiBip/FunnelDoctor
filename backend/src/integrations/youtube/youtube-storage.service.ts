@@ -109,42 +109,58 @@ export class YouTubeStorageService {
         
       // Normalisation du score (considérant qu'un ratio de 0.1 est déjà très bon)
       const normalizedEngagement = Math.min(engagementScore / 0.1, 1);
+      
+      // Calcul du CTR des cards (cardClicks / cardImpressions)
+      const cardCTR = analytics?.cardImpressions > 0 
+        ? (analytics.cardClicks / analytics.cardImpressions) 
+        : 0;
+
+      this.logger.debug(`Calcul du CTR des cards: ${analytics?.cardClicks || 0} clics / ${analytics?.cardImpressions || 0} impressions = ${cardCTR}`);
 
       // Données de base pour l'insertion
       const statsData = {
         video_id: dbVideoId,
-        view_count: stats.viewCount,
-        like_count: stats.likeCount,
-        comment_count: stats.commentCount,
-        favorite_count: stats.favoriteCount,
-        engagement_rate: engagementScore,
-        normalized_engagement_rate: normalizedEngagement,
+        view_count: parseInt(stats.viewCount) || 0,
+        like_count: parseInt(stats.likeCount) || 0,
+        comment_count: parseInt(stats.commentCount) || 0,
+        favorite_count: parseInt(stats.favoriteCount) || 0,
+        engagement_rate: parseFloat(engagementScore.toFixed(6)) || 0,
+        normalized_engagement_rate: parseFloat(normalizedEngagement.toFixed(6)) || 0,
         engagement_level: this.getEngagementLevel(normalizedEngagement),
         fetched_at: new Date().toISOString(),
+        // Stockage du JSON complet pour utilisation future
+        analytics_data: analytics ? JSON.stringify(analytics) : '{}'
       };
 
       // Ajout des données analytiques si disponibles
       if (analytics) {
         this.logger.debug(`Ajout des données analytiques pour vidéo dbId=${dbVideoId}`);
         Object.assign(statsData, {
-          // Métriques existantes
-          watch_time_minutes: analytics.watchTimeMinutes || 0,
-          average_view_duration: analytics.averageViewDuration || 0,
+          // Métriques de durée de visionnage
+          watch_time_minutes: parseFloat(analytics.watchTimeMinutes) || 0,
+          average_view_duration: parseFloat(analytics.averageViewDuration) || 0,
+          
+          // Période d'analyse
           analytics_period_start: analytics.period?.startDate || null,
           analytics_period_end: analytics.period?.endDate || null,
           
-          // Nouvelles métriques ajoutées
-          subscribers_gained: analytics.subscribersGained || 0,
-          shares: analytics.shares || 0,
-          average_view_percentage: analytics.averageViewPercentage || 0,
-          card_click_rate: analytics.cardClickRate || 0,
-          card_clicks: analytics.cardClicks || 0,
-          card_impressions: analytics.cardImpressions || 0,
+          // Métriques de croissance
+          subscribers_gained: parseInt(analytics.subscribersGained) || 0,
+          shares: parseInt(analytics.shares) || 0,
+          
+          // Métriques de rétention
+          average_view_percentage: parseFloat(analytics.averageViewPercentage) || 0,
+          
+          // Métriques des cards YouTube
+          card_click_rate: parseFloat(analytics.cardClickRate) || 0,
+          card_clicks: parseInt(analytics.cardClicks) || 0,
+          card_impressions: parseInt(analytics.cardImpressions) || 0,
+          card_ctr: parseFloat(cardCTR.toFixed(6)) || 0
         });
         
         // Log des métriques analytiques pour debugging
         this.logger.debug(`Métriques analytiques: retention=${analytics.averageViewPercentage || 0}%, abonnés=${analytics.subscribersGained || 0}, partages=${analytics.shares || 0}`);
-        this.logger.debug(`Métriques cartes: CTR=${analytics.cardClickRate || 0}%, clics=${analytics.cardClicks || 0}, impressions=${analytics.cardImpressions || 0}`);
+        this.logger.debug(`Métriques cartes: CTR=${cardCTR.toFixed(6) || 0}, clics=${analytics.cardClicks || 0}, impressions=${analytics.cardImpressions || 0}`);
       }
 
       const { error } = await this.supabaseService.getAdminClient()
