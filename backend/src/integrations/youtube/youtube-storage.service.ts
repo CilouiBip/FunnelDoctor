@@ -96,33 +96,76 @@ export class YouTubeStorageService {
    */
   async storeVideoStats(dbVideoId: string, stats: any, analytics?: any): Promise<void> {
     try {
-      this.logger.debug(`Stockage des statistiques pour vidéo dbId=${dbVideoId}`);
+      this.logger.log(`[STORAGE-DETAILED] DÉBUT storeVideoStats pour vidéo dbId=${dbVideoId}`);
+      this.logger.log(`[STORAGE-DETAILED] Données d'entrée stats: ${JSON.stringify(stats, null, 2)}`);
+      this.logger.log(`[STORAGE-DETAILED] Données d'entrée analytics: ${JSON.stringify(analytics, null, 2)}`);
+
+      // Validation des entrées pour détecter tout problème potentiel
+      if (!stats) {
+        this.logger.error(`[STORAGE-DETAILED] ERREUR: Objet stats non défini ou null`);
+        throw new Error('Statistiques non définies');
+      }
+
+      if (!stats.viewCount && stats.viewCount !== 0) {
+        this.logger.warn(`[STORAGE-DETAILED] Attention: stats.viewCount non défini ou null. Stats complètes: ${JSON.stringify(stats)}`);
+      }
 
       // Calcul pondéré de l'engagement (même formule que dans YouTubeDataService)
       const likeWeight = 1;
       const commentWeight = 5;
       
       // Score d'engagement pondéré
-      const engagementScore = stats.viewCount > 0
-        ? ((stats.likeCount * likeWeight) + (stats.commentCount * commentWeight)) / stats.viewCount
+      const viewCount = parseInt(stats.viewCount) || 0;
+      const likeCount = parseInt(stats.likeCount) || 0;
+      const commentCount = parseInt(stats.commentCount) || 0;
+      
+      this.logger.log(`[STORAGE-DETAILED] Valeurs brutes: vues=${viewCount}, likes=${likeCount}, commentaires=${commentCount}`);
+      
+      const engagementScore = viewCount > 0
+        ? ((likeCount * likeWeight) + (commentCount * commentWeight)) / viewCount
         : 0;
         
       // Normalisation du score (considérant qu'un ratio de 0.1 est déjà très bon)
       const normalizedEngagement = Math.min(engagementScore / 0.1, 1);
       
-      // Calcul du CTR des cards (cardClicks / cardImpressions)
-      const cardCTR = analytics?.cardImpressions > 0 
-        ? (analytics.cardClicks / analytics.cardImpressions) 
-        : 0;
+      this.logger.log(`[STORAGE-DETAILED] Score d'engagement calculé: ${engagementScore.toFixed(6)}, normalisé: ${normalizedEngagement.toFixed(6)}`);
+      
+      // Calcul du CTR des cards
+      let cardCTR = 0;
+      if (analytics) {
+        // CORRECTION BUG: Utiliser cardClickRate fourni par l'API si disponible (déjà sous forme décimale 0-1)
+        if (typeof analytics.cardClickRate === 'number' && !isNaN(analytics.cardClickRate)) {
+          // Utiliser directement la valeur de l'API qui est déjà un décimal (0-1)
+          cardCTR = analytics.cardClickRate;
+          this.logger.log(`[STORAGE-DETAILED] Utilisation du cardClickRate fourni par l'API: ${analytics.cardClickRate} (déjà décimal 0-1) --> CTR stocké = ${cardCTR.toFixed(6)}`);
+        } 
+        // Fallback: calcul manuel si cardClickRate n'est pas fourni
+        else {
+          const cardClicks = parseInt(analytics.cardClicks) || 0;
+          const cardImpressions = parseInt(analytics.cardImpressions) || 0;
+          cardCTR = cardImpressions > 0 ? (cardClicks / cardImpressions) : 0;
+          this.logger.log(`[STORAGE-DETAILED] CTR des cards calculé manuellement: ${cardClicks} clics / ${cardImpressions} impressions = ${cardCTR.toFixed(6)}`);
+        }
+      } else {
+        this.logger.warn(`[STORAGE-DETAILED] Aucune donnée de cards disponible pour calcul du CTR`);
+      }
 
-      this.logger.debug(`Calcul du CTR des cards: ${analytics?.cardClicks || 0} clics / ${analytics?.cardImpressions || 0} impressions = ${cardCTR}`);
+      // Log de vérification du CTR pour la vidéo 2PJqrERIw3k (cas spécial)
+      if (stats.videoId === '2PJqrERIw3k' || (analytics && analytics.videoId === '2PJqrERIw3k')) {
+        this.logger.log(`[STORAGE-DETAILED] [CAS SPECIAL vidéo 2PJqrERIw3k] 
+  - cardClickRate fourni par l'API (format décimal 0-1) = ${analytics?.cardClickRate}
+  - cardClicks = ${analytics?.cardClicks}
+  - cardImpressions = ${analytics?.cardImpressions}
+  - CTR stocké en BDD (décimal) = ${cardCTR}
+  - CTR pour affichage (%) = ${(cardCTR * 100).toFixed(2)}%`)
+      }
 
       // Données de base pour l'insertion
       const statsData = {
         video_id: dbVideoId,
-        view_count: parseInt(stats.viewCount) || 0,
-        like_count: parseInt(stats.likeCount) || 0,
-        comment_count: parseInt(stats.commentCount) || 0,
+        view_count: viewCount,
+        like_count: likeCount,
+        comment_count: commentCount,
         favorite_count: parseInt(stats.favoriteCount) || 0,
         engagement_rate: parseFloat(engagementScore.toFixed(6)) || 0,
         normalized_engagement_rate: parseFloat(normalizedEngagement.toFixed(6)) || 0,
@@ -132,49 +175,91 @@ export class YouTubeStorageService {
         analytics_data: analytics ? JSON.stringify(analytics) : '{}'
       };
 
+      this.logger.log(`[STORAGE-DETAILED] Données de base prêtes: ${JSON.stringify(statsData, null, 2)}`);
+
       // Ajout des données analytiques si disponibles
       if (analytics) {
-        this.logger.debug(`Ajout des données analytiques pour vidéo dbId=${dbVideoId}`);
-        Object.assign(statsData, {
+        this.logger.log(`[STORAGE-DETAILED] Enrichissement des données avec les analytics`);
+        
+        // Valeurs extraites et transformées pour le stockage
+        const watchTimeMinutes = parseFloat(analytics.watchTimeMinutes) || 0;
+        const avgViewDuration = parseFloat(analytics.averageViewDuration) || 0;
+        const subsGained = parseInt(analytics.subscribersGained) || 0;
+        const shares = parseInt(analytics.shares) || 0;
+        const avgViewPercentage = parseFloat(analytics.averageViewPercentage) || 0;
+        const cardClickRate = parseFloat(analytics.cardClickRate) || 0;
+        const cardClicks = parseInt(analytics.cardClicks) || 0;
+        const cardImpressions = parseInt(analytics.cardImpressions) || 0;
+        
+        const analyticsExtension = {
           // Métriques de durée de visionnage
-          watch_time_minutes: parseFloat(analytics.watchTimeMinutes) || 0,
-          average_view_duration: parseFloat(analytics.averageViewDuration) || 0,
+          watch_time_minutes: watchTimeMinutes,
+          average_view_duration: avgViewDuration,
           
           // Période d'analyse
           analytics_period_start: analytics.period?.startDate || null,
           analytics_period_end: analytics.period?.endDate || null,
           
           // Métriques de croissance
-          subscribers_gained: parseInt(analytics.subscribersGained) || 0,
-          shares: parseInt(analytics.shares) || 0,
+          subscribers_gained: subsGained,
+          shares: shares,
           
           // Métriques de rétention
-          average_view_percentage: parseFloat(analytics.averageViewPercentage) || 0,
+          average_view_percentage: avgViewPercentage,
           
           // Métriques des cards YouTube
-          card_click_rate: parseFloat(analytics.cardClickRate) || 0,
-          card_clicks: parseInt(analytics.cardClicks) || 0,
-          card_impressions: parseInt(analytics.cardImpressions) || 0,
+          card_click_rate: cardClickRate,
+          card_clicks: cardClicks,
+          card_impressions: cardImpressions,
           card_ctr: parseFloat(cardCTR.toFixed(6)) || 0
-        });
+        };
         
-        // Log des métriques analytiques pour debugging
-        this.logger.debug(`Métriques analytiques: retention=${analytics.averageViewPercentage || 0}%, abonnés=${analytics.subscribersGained || 0}, partages=${analytics.shares || 0}`);
-        this.logger.debug(`Métriques cartes: CTR=${cardCTR.toFixed(6) || 0}, clics=${analytics.cardClicks || 0}, impressions=${analytics.cardImpressions || 0}`);
+        Object.assign(statsData, analyticsExtension);
+        
+        // Log détaillé des métriques analytiques pour debugging
+        this.logger.log(`[STORAGE-DETAILED] Métriques analytiques prêtes pour stockage:
+` +
+          `  - watchTimeMinutes: ${watchTimeMinutes}
+` +
+          `  - avgViewDuration: ${avgViewDuration}s
+` +
+          `  - avgViewPercentage: ${avgViewPercentage}%
+` +
+          `  - subscribersGained: ${subsGained}
+` +
+          `  - shares: ${shares}
+` +
+          `  - cardClickRate: ${cardClickRate}%
+` +
+          `  - cardClicks: ${cardClicks}
+` +
+          `  - cardImpressions: ${cardImpressions}
+` +
+          `  - cardCTR: ${cardCTR.toFixed(6)}`);
+      } else {
+        this.logger.warn(`[STORAGE-DETAILED] Aucune donnée analytics disponible pour enrichissement`);
       }
 
-      const { error } = await this.supabaseService.getAdminClient()
+      this.logger.log(`[STORAGE-DETAILED] Prêt à insérer dans la table youtube_video_stats`);
+      
+      // Insertion dans la base de données
+      const { data, error } = await this.supabaseService.getAdminClient()
         .from('youtube_video_stats')
-        .insert(statsData);
+        .insert(statsData)
+        .select('id')
+        .single();
 
       if (error) {
-        this.logger.error(`Erreur lors du stockage des statistiques: ${error.message}`);
+        this.logger.error(`[STORAGE-DETAILED] ERREUR BDD lors du stockage des statistiques: ${error.message}`);
+        this.logger.error(`[STORAGE-DETAILED] Détails de l'erreur: ${JSON.stringify(error, null, 2)}`);
         throw error;
       }
 
-      this.logger.debug(`Statistiques stockées avec succès pour vidéo dbId=${dbVideoId}`);
+      this.logger.log(`[STORAGE-DETAILED] Statistiques stockées avec succès pour vidéo dbId=${dbVideoId}, statsId=${data?.id}`);
+      this.logger.log(`[STORAGE-DETAILED] FIN storeVideoStats pour vidéo dbId=${dbVideoId}`);
     } catch (error) {
-      this.logger.error(`Erreur lors du stockage des statistiques: ${error.message}`, error.stack);
+      this.logger.error(`[STORAGE-DETAILED] ERREUR CRITIQUE dans storeVideoStats: ${error.message}`, error.stack);
+      this.logger.error(`[STORAGE-DETAILED] Données qui ont provoqué l'erreur - stats: ${JSON.stringify(stats)}, analytics: ${JSON.stringify(analytics)}`);
       throw new Error(`Erreur lors du stockage des statistiques: ${error.message}`);
     }
   }

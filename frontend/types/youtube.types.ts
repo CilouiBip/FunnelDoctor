@@ -45,8 +45,14 @@ export interface YouTubeVideo {
       endDate?: string;
     };
   };
-  // Métriques calculées d'engagement
+  // Métriques calculées d'engagement et statistiques de base
   stats?: {
+    // Métriques de base (viewCount, likeCount, etc.)
+    viewCount?: string | number;
+    likeCount?: string | number;
+    commentCount?: string | number;
+    favoriteCount?: string | number;
+    // Métriques calculées d'engagement
     engagementRate?: number;
     normalizedEngagementRate?: number;
     engagementLevel?: string;

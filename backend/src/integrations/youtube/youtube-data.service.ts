@@ -5,6 +5,7 @@ import { YouTubeTokenRefreshService } from './youtube-token-refresh.service';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { YouTubeStorageService } from './youtube-storage.service';
 import { YouTubeAuthService } from './youtube-auth.service';
+import { YouTubeAnalyticsService } from './youtube-analytics.service';
 
 export interface VideoQueryOptions {
   limit?: number;
@@ -26,6 +27,9 @@ export interface VideoDTO {
     likeCount: number;
     commentCount: number;
     favoriteCount: number;
+    // Données d'engagement enrichies depuis la base de données
+    engagementRate?: number;
+    engagementLevel?: string;
   };
   duration: string;
   tags?: string[];
@@ -65,7 +69,10 @@ export class YouTubeDataService {
     private readonly supabaseService: SupabaseService,
     private readonly storageService: YouTubeStorageService,
     private readonly youtubeAuthService: YouTubeAuthService,
-  ) {}
+    private readonly youtubeAnalyticsService: YouTubeAnalyticsService, // Maintenant obligatoire, pas optionnelle
+  ) {
+    this.logger.log(`YouTubeDataService initialisé avec YouTubeAnalyticsService: ${!!youtubeAnalyticsService}`);
+  }
 
   /**
    * Retrieve user videos from YouTube (live fetch), store them if requested.
@@ -203,6 +210,143 @@ export class YouTubeDataService {
         this.logger.log(`[DIAGNOSTIC] Successfully stored ${storedCount}/${videos.length} videos in database`);
       } else if (!storeInDb) {
         this.logger.log(`[DIAGNOSTIC] Skipping database storage as requested (storeInDb=false)`);
+      }
+
+      // 10) NOUVEAU: Enrichissement avec les statistiques avancées depuis la base de données
+      if (videos.length > 0) {
+        try {
+          this.logger.log(`[DIAGNOSTIC] Enrichissant ${videos.length} vidéos avec les données analytiques avancées de la base de données`);
+          
+          // 10.1) D'abord, enrichir avec les données stockées en BDD
+          const storedVideos = await this.storageService.getUserStoredVideos(userId);
+          
+          // Créer une map des données stockées pour un accès rapide
+          const storedVideosMap = new Map();
+          storedVideos.forEach(storedVideo => {
+            storedVideosMap.set(storedVideo.video_id, storedVideo);
+          });
+          
+          // Enrichir chaque vidéo avec ses statistiques stockées
+          videos.forEach(video => {
+            const storedVideo = storedVideosMap.get(video.id);
+            if (storedVideo && storedVideo.stats && storedVideo.stats.length > 0) {
+              // Prendre les statistiques les plus récentes
+              const latestStats = storedVideo.stats.reduce((latest, current) => {
+                if (!latest || new Date(current.fetched_at) > new Date(latest.fetched_at)) {
+                  return current;
+                }
+                return latest;
+              }, null);
+              
+              if (latestStats) {
+                // Initialiser avec les données analytiques de base
+                video.analytics = {
+                  watchTimeMinutes: latestStats.watch_time_minutes || 0,
+                  averageViewDuration: latestStats.average_view_duration || 0,
+                  averageViewPercentage: latestStats.average_view_percentage || 0,
+                  cardClickRate: latestStats.card_click_rate || 0,
+                  cardClicks: latestStats.card_clicks || 0,
+                  cardImpressions: latestStats.card_impressions || 0,
+                  subscribersGained: latestStats.subscribers_gained || 0,
+                  shares: latestStats.shares || 0,
+                  period: {
+                    startDate: latestStats.analytics_period_start || '',
+                    endDate: latestStats.analytics_period_end || ''
+                  }
+                };
+                
+                // Ajouter également les données d'engagement
+                video.stats.engagementRate = latestStats.engagement_rate || 0;
+                video.stats.engagementLevel = latestStats.engagement_level || 'N/A';
+                
+                this.logger.debug(`[DIAGNOSTIC] Vidéo ${video.id} enrichie avec analytics de la BDD: rétention=${video.analytics.averageViewPercentage}%, engagement=${video.stats.engagementRate}`);
+              }
+            } else {
+              this.logger.debug(`[DIAGNOSTIC] Aucune donnée analytique trouvée en BDD pour la vidéo ${video.id}`);
+            }
+          });
+          
+          this.logger.log(`[DIAGNOSTIC] Enrichissement BDD des vidéos terminé`);
+          
+          // 10.2) NOUVEAU: Enrichir avec les analytics frais depuis l'API YouTube pour chaque vidéo
+          // Vérification robuste de l'existence du service
+          if (!this.youtubeAnalyticsService) {
+            this.logger.error(`[DIAGNOSTIC] ERREUR CRITIQUE: YouTubeAnalyticsService n'est pas injecté ou disponible!`);
+            this.logger.log(`[DIAGNOSTIC] Valeurs des services:
+  - youtubeAuthService: ${!!this.youtubeAuthService}
+  - tokenRefreshService: ${!!this.tokenRefreshService}
+  - storageService: ${!!this.storageService}
+  - youtubeAnalyticsService: ${!!this.youtubeAnalyticsService}`);
+          } else {
+            this.logger.log(`[DIAGNOSTIC] Début de l'enrichissement des vidéos depuis l'API YouTube Analytics...`);
+            
+            // Récupérer les analytics réelles pour chaque vidéo
+            const analyticsPromises = videos.map(async (video) => {
+              try {
+                // Récupérer les analytics détaillées depuis l'API YouTube
+                // Vérification explicite de l'existence du service avant appel pour éviter toute erreur TypeScript
+                if (!this.youtubeAnalyticsService) {
+                  this.logger.warn(`[DIAGNOSTIC] YouTubeAnalyticsService non disponible pour vidéo ${video.id}`);
+                  return; // Sortir de la promesse courante
+                }
+                
+                this.logger.log(`[DIAGNOSTIC] Appel à getVideoDetailedAnalytics pour vidéo ${video.id}`);
+                const analytics = await this.youtubeAnalyticsService.getVideoDetailedAnalytics(userId, video.id, 30); // 30 derniers jours
+                
+                if (analytics) {
+                  // Mettre à jour l'objet vidéo avec les données fraîches
+                  video.analytics = analytics;
+                  
+                  // Recalculer l'engagement avec les nouvelles données (ligèrement différent du calcul dans le service storage)
+                  const likeWeight = 1;
+                  const commentWeight = 5;
+                  const engagementScore = video.stats.viewCount > 0
+                    ? ((video.stats.likeCount * likeWeight) + (video.stats.commentCount * commentWeight)) / video.stats.viewCount
+                    : 0;
+                    
+                  // Normaliser sur un ratio de 0.1
+                  const normalizedEngagement = Math.min(engagementScore / 0.1, 1);
+                  
+                  // Mettre à jour les stats d'engagement
+                  video.stats.engagementRate = parseFloat(engagementScore.toFixed(4));
+                  video.stats.engagementLevel = this.getEngagementLevel(normalizedEngagement);
+                  
+                  this.logger.log(`[DIAGNOSTIC] Analytics enrichies: vidéo ${video.id} - rétention=${analytics.averageViewPercentage.toFixed(2)}%, durée=${analytics.averageViewDuration}s, abonnés=${analytics.subscribersGained}, CTR=${analytics.cardClickRate}%`);
+                  
+                  // Sauvegarder ces analytics dans la base de données pour les consulter hors-ligne
+                  if (video.dbId) {
+                    try {
+                      // Log détaillé des données qui vont être stockées
+                      this.logger.log(`[DIAGNOSTIC] Données analytics prêtes pour stockage:
+  - vidéo ID: ${video.id}
+  - retention: ${analytics.averageViewPercentage}%
+  - durée: ${analytics.averageViewDuration}s
+  - abonnés: ${analytics.subscribersGained}
+  - partages: ${analytics.shares}
+  - cardCTR: ${analytics.cardClickRate}%
+  - cardClicks: ${analytics.cardClicks}
+  - cardImpr: ${analytics.cardImpressions}`);
+                      
+                      await this.storageService.storeVideoStats(video.dbId, video.stats, analytics);
+                      this.logger.debug(`[DIAGNOSTIC] Analytics sauvegardées en BDD pour vidéo ${video.id}`);
+                    } catch (storageError) {
+                      this.logger.error(`[DIAGNOSTIC] Erreur sauvegarde analytics en BDD: ${storageError.message}`);
+                    }
+                  }
+                }
+              } catch (analyticsError) {
+                this.logger.error(`[DIAGNOSTIC] Erreur récupération analytics pour vidéo ${video.id}: ${analyticsError.message}`);
+              }
+            });
+            
+            // Attendre que toutes les promesses soient résolues
+            await Promise.all(analyticsPromises);
+            this.logger.log(`[DIAGNOSTIC] Enrichissement avec YouTube Analytics terminé`);
+          }
+        } catch (enrichError) {
+          this.logger.error(`[DIAGNOSTIC] Erreur lors de l'enrichissement des vidéos avec les analytics: ${enrichError.message}`, enrichError.stack);
+          // Ne pas échouer complètement, continuer avec les données de base
+        }
       }
 
       // Check existing videos in DB for this user for comparison

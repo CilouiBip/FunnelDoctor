@@ -8,36 +8,36 @@ interface VideoTableRowProps {
 }
 
 const VideoTableRow: React.FC<VideoTableRowProps> = ({ video, onViewDetails }) => {
+  // Log des props pour débogage
+  console.log('[VideoTableRow] Props reçues pour video.id:', video?.id, video);
+  
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-      {/* Colonne Vidu00e9o - Thumbnail et informations de base */}
+      {/* Column: Video - Thumbnail and basic info */}
       <td className="px-6 py-4">
         <div className="flex items-center space-x-3">
           <div className="w-16 h-9 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-            {/* Utiliser le debugger du navigateur pour voir cette information */}
             <img 
-              src={video.snippet?.thumbnails?.medium?.url || 
-                   video.snippet?.thumbnails?.default?.url || 
-                   video.snippet?.thumbnails?.high?.url || 
-                   'https://via.placeholder.com/120x90?text=No+Thumbnail'}
-              alt={video.snippet?.title || 'YouTube Video'} 
-              className="w-full h-full object-cover" 
+              src={video.thumbnailUrl || "/images/thumbnail-placeholder.png"} 
+              alt={video.title || "Video thumbnail"}
+              className="w-full h-full object-cover"
               onError={(e) => {
-                e.currentTarget.src = 'https://via.placeholder.com/120x90?text=Error';
-                console.error('Failed to load image for video:', video.id);
+                console.error(`Échec chargement image depuis thumbnailUrl: ${video.thumbnailUrl} pour video: ${video.id}`);
+                // Si même la thumbnailUrl échoue, utiliser le placeholder local
+                e.currentTarget.src = "/images/thumbnail-placeholder.png";
               }}
             />
           </div>
           <div className="flex flex-col">
-            <span className="font-medium truncate max-w-xs">{video.snippet?.title || 'Vidu00e9o sans titre'}</span>
+            <span className="font-medium truncate max-w-xs">{video.title || 'Titre Manquant'}</span>
             <span className="text-xs text-gray-500">
-              {formatDate(video.snippet?.publishedAt)}
+              ID: {video?.id || 'N/A'}
             </span>
           </div>
         </div>
       </td>
 
-      {/* Statistiques de base */}
+      {/* Colonne VIEWS - Vues, minutes estimées et likes */}
       <td className="px-4 py-4">
         <div className="flex flex-col space-y-1">
           <div className="flex items-center space-x-1">
@@ -45,101 +45,89 @@ const VideoTableRow: React.FC<VideoTableRowProps> = ({ video, onViewDetails }) =
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
-            <span className="text-sm text-gray-700">
-              {formatNumber(video.statistics?.viewCount)}
+            <span className="text-sm text-gray-700 font-medium">
+              {video.stats?.viewCount ?? 'N/A'}
             </span>
           </div>
           <div className="flex items-center space-x-1">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-sm text-gray-700">
-              {formatNumber(video.statistics?.likeCount)}
+            <span className="text-xs text-gray-500">
+              Mins: {video.analytics?.estimatedMinutesWatched ?? video.analytics?.watchTimeMinutes ?? 'N/A'}
             </span>
           </div>
           <div className="flex items-center space-x-1">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-sm text-gray-700">
-              {formatNumber(video.statistics?.commentCount)}
+            <span className="text-xs text-gray-500">
+              Likes: {video.stats?.likeCount ?? 'N/A'}
             </span>
           </div>
         </div>
       </td>
 
-      {/* Engagement */}
+      {/* Colonne RETENTION - Pourcentage et durée de rétention */}
       <td className="px-4 py-4">
         <div className="flex flex-col space-y-1">
           <div className="text-sm">
-            <span className={getEngagementColorClass(video.stats?.engagementLevel)}>
-              {video.stats?.engagementRate 
-                ? `${(video.stats.engagementRate * 100).toFixed(2)}%` 
-                : 'N/A'}
-            </span>
+            Rétention: {(video.analytics?.averageViewPercentage ?? 0).toFixed(1)} %
           </div>
           <div className="text-xs text-gray-500">
-            {video.stats?.engagementLevel || 'N/A'}
+            Durée: {video.analytics?.averageViewDuration ?? 0} sec
           </div>
         </div>
       </td>
 
-      {/* Ru00e9tention & Duru00e9e */}
+      {/* Colonne ENGAGEMENT - Taux et niveau d'engagement */}
       <td className="px-4 py-4">
         <div className="flex flex-col space-y-1">
           <div className="text-sm">
-            <span className={getRetentionColorClass(video.analytics?.averageViewPercentage)}>
-              {video.analytics?.averageViewPercentage 
-                ? `${video.analytics.averageViewPercentage.toFixed(2)}%` 
-                : 'N/A'}
-            </span>
+            Taux: {(video.stats?.engagementRate ?? 0).toFixed(4)}
           </div>
           <div className="text-xs text-gray-500">
-            {formatDuration(video.analytics?.averageViewDuration)}
+            Niveau: {video.stats?.engagementLevel ?? 'N/A'}
           </div>
         </div>
       </td>
 
-      {/* Fiches & CTAs */}
-      <td className="px-4 py-4">
-        <div className="flex flex-col space-y-1">
-          <div className="text-sm flex justify-between items-center">
-            <span className="font-medium">
-              {video.analytics?.cardClickRate 
-                ? `${(video.analytics.cardClickRate * 100).toFixed(2)}%` 
-                : 'N/A'}
-            </span>
-            <span className="text-xs text-gray-500 ml-1">CTR</span>
-          </div>
-          <div className="text-xs text-gray-500 flex justify-between">
-            <span>
-              {formatNumber(video.analytics?.cardClicks || 0)}
-            </span>
-            <span>clics</span>
-          </div>
-          <div className="text-xs text-gray-500 flex justify-between">
-            <span>
-              {formatNumber(video.analytics?.cardImpressions || 0)}
-            </span>
-            <span>impressions</span>
-          </div>
-        </div>
-      </td>
-
-      {/* Croissance */}
+      {/* Colonne GROWTH - Abonnés gagnés et partages */}
       <td className="px-4 py-4">
         <div className="flex flex-col space-y-2">
-          <div className="text-sm flex justify-between items-center">
-            <span className="text-green-600 font-medium">
-              +{formatNumber(video.analytics?.subscribersGained || 0)}
+          <div className="text-sm">
+            <span>
+              Abonnés: {video.analytics?.subscribersGained ?? 0}
             </span>
-            <span className="text-xs text-gray-500">abonnu00e9s</span>
           </div>
-          <div className="text-sm flex justify-between items-center">
-            <span className="text-blue-600 font-medium">
-              {formatNumber(video.analytics?.shares || 0)}
+          <div className="text-sm">
+            <span>
+              Partages: {video.analytics?.shares ?? 0}
             </span>
-            <span className="text-xs text-gray-500">partages</span>
+          </div>
+        </div>
+      </td>
+
+      {/* Colonne CARDS CTR - Taux de clic, nombre de clics et impressions */}
+      <td className="px-4 py-4">
+        <div className="flex flex-col space-y-1">
+          <div className="text-sm">
+            <span>
+              {/* cardClickRate est en décimal (0-1) venant de l'API, multiplication par 100 pour affichage % */}
+              CTR: {typeof video.analytics?.cardClickRate === 'number' 
+                ? `${(video.analytics.cardClickRate * 100).toFixed(1)}%` 
+                : '0.0%'}
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">
+            <span>
+              Clics: {video.analytics?.cardClicks ?? 0}
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">
+            <span>
+              Impr: {video.analytics?.cardImpressions ?? 0}
+            </span>
           </div>
         </div>
       </td>

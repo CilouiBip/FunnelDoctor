@@ -324,4 +324,283 @@ export class YouTubeAnalyticsService {
       };
     }
   }
+
+  /**
+   * Récupère les métriques analytiques complètes pour une vidéo spécifique
+   * @param userId ID de l'utilisateur
+   * @param videoId ID de la vidéo YouTube
+   * @param days Nombre de jours dans le passé pour la période d'analyse
+   * @returns Objets contenant toutes les métriques analytiques pour la vidéo
+   */
+  async getVideoDetailedAnalytics(userId: string, videoId: string, days = 30) {
+    try {
+      this.logger.log(`
+==================================================================
+[ANALYTICS-DETAILED] DÉBUT getVideoDetailedAnalytics pour vidéo ${videoId}
+==================================================================`);
+      this.logger.log(`[ANALYTICS-DETAILED] Paramètres: user=${userId}, vidéo=${videoId}, période=${days} jours`);
+      
+      // Vérifier l'intégration
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        this.logger.warn(`[ANALYTICS-DETAILED] ERREUR: Aucune intégration YouTube valide pour user=${userId}`);
+        return null;
+      } else {
+        this.logger.log(`[ANALYTICS-DETAILED] Intégration YouTube validée pour user=${userId}`);
+      }
+      
+      // Récupérer le token
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        this.logger.warn(`[ANALYTICS-DETAILED] ERREUR: Token d'accès YouTube non disponible pour user=${userId}`);
+        return null;
+      } else {
+        this.logger.log(`[ANALYTICS-DETAILED] Token d'accès YouTube obtenu: ${config.access_token?.substring(0, 10)}...`);
+      }
+
+      // Définir la période (par défaut: 30 derniers jours)
+      const endDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      const formattedStartDate = startDate.toISOString().split('T')[0];
+      
+      // Récupérer la chaîne associée (nécessaire pour certaines métriques)
+      const channelResponse = await firstValueFrom(
+        this.httpService.get('https://www.googleapis.com/youtube/v3/channels', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            part: 'id',
+            mine: true,
+          },
+        })
+      ).catch(error => {
+        this.logger.error(`[ANALYTICS] Erreur lors de la récupération de la chaîne: ${error.message}`);
+        return null;
+      });
+      
+      if (!channelResponse || !channelResponse.data.items || channelResponse.data.items.length === 0) {
+        this.logger.warn(`[ANALYTICS] Aucune chaîne trouvée pour user=${userId}`);
+        return null;
+      }
+      
+      const channelId = channelResponse.data.items[0].id;
+      
+      // === MÉTRIQUE 1: STATISTIQUES DE BASE DE LA VIDÉO ===
+      this.logger.log(`[ANALYTICS-DETAILED] Récupération des métriques de base pour vidéo ${videoId}`);
+      
+      // Log complet des paramètres de la requête 
+      const baseMetricsParams = {
+        ids: `channel==${channelId}`,
+        startDate: formattedStartDate,
+        endDate,
+        metrics: 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,shares,likes,comments',
+        dimensions: 'video',
+        filters: `video==${videoId}`
+      };
+      
+      this.logger.log(`[ANALYTICS-DETAILED] Requête métriques de base:
+${JSON.stringify(baseMetricsParams, null, 2)}`);
+      
+      const videoStatsResponse = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: baseMetricsParams,
+        })
+      ).catch(error => {
+        this.logger.error(`[ANALYTICS-DETAILED] ERREUR lors de la récupération des stats de base: ${error.message}`);
+        if (error.response) {
+          this.logger.error(`[ANALYTICS-DETAILED] Réponse d'erreur API: ${JSON.stringify(error.response.data)}`);
+        } else {
+          this.logger.error(`[ANALYTICS-DETAILED] Erreur complète: ${JSON.stringify(error)}`);
+        }
+        return null;
+      });
+      
+      if (videoStatsResponse) {
+        this.logger.log(`[ANALYTICS-DETAILED] Réponse API métriques de base reçue avec succès pour vidéo ${videoId}`);
+      } else {
+        this.logger.error(`[ANALYTICS-DETAILED] Aucune réponse ou réponse vide pour métriques de base de vidéo ${videoId}`);
+      }
+      
+      // === MÉTRIQUE 2: STATISTIQUES DES CARDS/CTA ===
+      this.logger.log(`[ANALYTICS-DETAILED] Récupération des métriques Cards/CTA pour vidéo ${videoId}`);
+      
+      // Log complet des paramètres de la requête
+      const cardsMetricsParams = {
+        ids: `channel==${channelId}`,
+        startDate: formattedStartDate,
+        endDate,
+        metrics: 'cardClickRate,cardClicks,cardImpressions',
+        dimensions: 'video',
+        filters: `video==${videoId}`
+      };
+      
+      this.logger.log(`[ANALYTICS-DETAILED] Requête métriques de cartes:
+${JSON.stringify(cardsMetricsParams, null, 2)}`);
+      
+      const cardsStatsResponse = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: cardsMetricsParams,
+        })
+      ).catch(error => {
+        this.logger.error(`[ANALYTICS-DETAILED] ERREUR lors de la récupération des stats de cartes: ${error.message}`);
+        if (error.response) {
+          this.logger.error(`[ANALYTICS-DETAILED] Réponse d'erreur API: ${JSON.stringify(error.response.data)}`);
+        } else {
+          this.logger.error(`[ANALYTICS-DETAILED] Erreur complète: ${JSON.stringify(error)}`);
+        }
+        return null;
+      });
+      
+      if (cardsStatsResponse) {
+        this.logger.log(`[ANALYTICS-DETAILED] Réponse API métriques de cartes reçue avec succès pour vidéo ${videoId}`);
+      } else {
+        this.logger.error(`[ANALYTICS-DETAILED] Aucune réponse ou réponse vide pour métriques de cartes de vidéo ${videoId}`);
+      }
+      
+      // Initialiser l'objet avec des valeurs par défaut
+      const analytics = {
+        watchTimeMinutes: 0,
+        averageViewDuration: 0,
+        averageViewPercentage: 0,
+        subscribersGained: 0,
+        shares: 0,
+        cardClickRate: 0,
+        cardClicks: 0,
+        cardImpressions: 0,
+        period: {
+          startDate: formattedStartDate,
+          endDate
+        }
+      };
+      
+      // Traiter les données de statistiques de base si disponibles
+      if (videoStatsResponse && videoStatsResponse.data.rows && videoStatsResponse.data.rows.length > 0) {
+        const row = videoStatsResponse.data.rows[0];
+        const columnHeaders = videoStatsResponse.data.columnHeaders;
+        
+        // Log détaillé des en-têtes et des données
+        this.logger.log(`[ANALYTICS-DETAILED] En-têtes des colonnes: ${JSON.stringify(columnHeaders.map(h => h.name))}`);
+        this.logger.log(`[ANALYTICS-DETAILED] Données brutes reçues de l'API:
+${JSON.stringify(row, null, 2)}`);
+        
+        // Mapper les données aux bonnes propriétés
+        columnHeaders.forEach((header, index) => {
+          if (index === 0) return; // Ignorer la première colonne (video ID)
+          
+          // Conversion de snake_case en camelCase pour les noms de métriques
+          const metricName = header.name;
+          const value = row[index];
+          
+          this.logger.log(`[ANALYTICS-DETAILED] Mapping métrique ${metricName} = ${value}`);
+          
+          if (metricName === 'views') {
+            // Ignorer les vues, déjà stockées via stats.viewCount
+            this.logger.log(`[ANALYTICS-DETAILED] Ignoré les vues: ${value} (déjà stockées via stats.viewCount)`);
+          } else if (metricName === 'estimatedMinutesWatched') {
+            analytics.watchTimeMinutes = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] Assigné watchTimeMinutes = ${value || 0}`);
+          } else if (metricName === 'averageViewDuration') {
+            analytics.averageViewDuration = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] Assigné averageViewDuration = ${value || 0}`);
+          } else if (metricName === 'averageViewPercentage') {
+            analytics.averageViewPercentage = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] Assigné averageViewPercentage = ${value || 0}`);
+          } else if (metricName === 'subscribersGained') {
+            analytics.subscribersGained = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] Assigné subscribersGained = ${value || 0}`);
+          } else if (metricName === 'shares') {
+            analytics.shares = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] Assigné shares = ${value || 0}`);
+          } else {
+            this.logger.log(`[ANALYTICS-DETAILED] Métrique non traitée: ${metricName} = ${value}`);
+          }
+        });
+        
+        this.logger.log(`[ANALYTICS-DETAILED] Métriques de base récupérées pour vidéo ${videoId}:
+  - averageViewDuration = ${analytics.averageViewDuration} sec
+  - averageViewPercentage = ${analytics.averageViewPercentage}%
+  - subscribersGained = ${analytics.subscribersGained}
+  - shares = ${analytics.shares}
+  - watchTimeMinutes = ${analytics.watchTimeMinutes}`);
+      } else {
+        this.logger.warn(`[ANALYTICS-DETAILED] AUCUNE DONNÉE DE BASE trouvée pour vidéo ${videoId}! Réponse API vide ou mal structurée`);
+        if (videoStatsResponse) {
+          this.logger.warn(`[ANALYTICS-DETAILED] Réponse API complète:
+${JSON.stringify(videoStatsResponse.data, null, 2)}`);
+        }
+      }
+      
+      // Traiter les données de cartes si disponibles
+      if (cardsStatsResponse && cardsStatsResponse.data.rows && cardsStatsResponse.data.rows.length > 0) {
+        const row = cardsStatsResponse.data.rows[0];
+        const columnHeaders = cardsStatsResponse.data.columnHeaders;
+        
+        // Log détaillé des en-têtes et des données
+        this.logger.log(`[ANALYTICS-DETAILED] CARDS - En-têtes des colonnes: ${JSON.stringify(columnHeaders.map(h => h.name))}`);
+        this.logger.log(`[ANALYTICS-DETAILED] CARDS - Données brutes reçues de l'API:
+${JSON.stringify(row, null, 2)}`);
+        
+        // Mapper les données aux bonnes propriétés
+        columnHeaders.forEach((header, index) => {
+          if (index === 0) return; // Ignorer la première colonne (video ID)
+          
+          const metricName = header.name;
+          const value = row[index];
+          
+          this.logger.log(`[ANALYTICS-DETAILED] CARDS - Mapping métrique ${metricName} = ${value}`);
+          
+          if (metricName === 'cardClickRate') {
+            analytics.cardClickRate = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] CARDS - Assigné cardClickRate = ${value || 0}`);
+          } else if (metricName === 'cardClicks') {
+            analytics.cardClicks = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] CARDS - Assigné cardClicks = ${value || 0}`);
+          } else if (metricName === 'cardImpressions') {
+            analytics.cardImpressions = value || 0;
+            this.logger.log(`[ANALYTICS-DETAILED] CARDS - Assigné cardImpressions = ${value || 0}`);
+          } else {
+            this.logger.log(`[ANALYTICS-DETAILED] CARDS - Métrique non traitée: ${metricName} = ${value}`);
+          }
+        });
+        
+        this.logger.log(`[ANALYTICS-DETAILED] Métriques de cartes récupérées pour vidéo ${videoId}:
+  - cardClickRate = ${analytics.cardClickRate}%
+  - cardClicks = ${analytics.cardClicks}
+  - cardImpressions = ${analytics.cardImpressions}`);
+      } else {
+        this.logger.warn(`[ANALYTICS-DETAILED] AUCUNE DONNÉE DE CARTES trouvée pour vidéo ${videoId}! Réponse API vide ou mal structurée`);
+        if (cardsStatsResponse) {
+          this.logger.warn(`[ANALYTICS-DETAILED] Réponse API CARDS complète:
+${JSON.stringify(cardsStatsResponse.data, null, 2)}`);
+        }
+      }
+      
+      // Afficher le résumé final des métriques compilées avant de retourner
+      this.logger.log(`
+[ANALYTICS-DETAILED] RÉSUMÉ FINAL des analytics pour vidéo ${videoId}:
+${JSON.stringify(analytics, null, 2)}
+-----------------------------------------------------------------
+`);
+      
+      return analytics;
+      
+    } catch (error) {
+      this.logger.error(`[ANALYTICS-DETAILED] ERREUR CRITIQUE lors de la récupération des métriques: ${error.message}`, error.stack);
+      this.logger.error(`[ANALYTICS-DETAILED] Erreur complète: ${JSON.stringify(error, null, 2)}`);
+      return null;
+    } finally {
+      this.logger.log(`
+==================================================================
+[ANALYTICS-DETAILED] FIN getVideoDetailedAnalytics pour vidéo ${videoId}
+==================================================================`);
+    }
+  }
 }

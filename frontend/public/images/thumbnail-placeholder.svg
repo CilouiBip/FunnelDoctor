@@ -1,0 +1,5 @@
+<svg width="120" height="90" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="90" fill="#f0f0f0"/>
+  <text x="60" y="45" font-family="Arial" font-size="12" text-anchor="middle" dominant-baseline="middle" fill="#666">Miniature non disponible</text>
+  <path d="M45,35 L80,45 L45,55 Z" fill="#cc0000"/>
+</svg>

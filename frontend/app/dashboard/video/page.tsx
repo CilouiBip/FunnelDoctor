@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchVideos, checkYouTubeConnection, connectYouTubeAccount, disconnectYouTubeAccount } from '../../../services/youtube.service';
 import { YouTubeVideo } from '../../../types/youtube.types';
 import toast from 'react-hot-toast';
-import useYouTubeAnalytics from '../../../hooks/useYouTubeAnalytics';
+import useYouTubeAnalytics, { YouTubeAggregatedMetrics } from '../../../hooks/useYouTubeAnalytics';
 import { formatNumber } from '../../../utils/formatters';
 import StatCard from '../../../components/youtube/StatCard';
 import VideoTable from '../../../components/youtube/VideoTable';
@@ -97,76 +97,40 @@ export default function VideoPerformancePage() {
   const loadVideos = async (token?: string) => {
     try {
       setLoading(true);
-      // LOGS DE DÉBOGAGE: État avant chargement
-      console.log("[FRONTEND-STATE] État avant chargement:", {
-        videosCount: videos.length,  
-        isLoading: loading, 
-        isConnected: isConnected
-      });
       console.log("[YOUTUBE] Chargement des vidéos avec pageToken:", token || 'INITIAL');
       
-      const response = await fetchVideos(token);
+      // Appel à l'API pour récupérer les vidéos
+      const response = await fetchVideos(token, 10, 'date');
       
-      // LOGS DE DÉBOGAGE: Réponse complète
-      console.log("[FRONTEND-FETCH] Réponse API BRUTE complète:", response);
-      console.log("[FRONTEND-FETCH] Structure de la réponse:", {
-        hasVideos: !!response.videos,
-        videosLength: response.videos?.length || 0,
-        videosType: response.videos ? typeof response.videos : 'undefined',
-        isVideosArray: response.videos ? Array.isArray(response.videos) : false,
-        responseKeys: Object.keys(response),
-        pagination: {
-          nextToken: response.nextPageToken,
-          totalResults: response.pageInfo?.totalResults,
-          resultsPerPage: response.pageInfo?.resultsPerPage
-        }
-      });
+      // Log 1 (Réponse Brute Reçue)
+      console.log('[DEBUG-FETCH] Réponse API BRUTE:', response);
       
-      // Afficher plus de détails sur les données analytiques de la première vidéo pour debug
-      if (response.videos?.length > 0) {
-        const firstVideo = response.videos[0];
-        console.log("[FRONTEND-FETCH] Exemple de données vidéo:", {
-          id: firstVideo.id,
-          title: firstVideo.snippet?.title,
-          stats: firstVideo.statistics,
-          analytics: {
-            watchTimeMinutes: firstVideo.analytics?.watchTimeMinutes,
-            averageViewDuration: firstVideo.analytics?.averageViewDuration,
-            views: firstVideo.analytics?.views,
-            subscribersGained: firstVideo.analytics?.subscribersGained,
-            shares: firstVideo.analytics?.shares,
-            averageViewPercentage: firstVideo.analytics?.averageViewPercentage,
-            cardClickRate: firstVideo.analytics?.cardClickRate,
-            cardClicks: firstVideo.analytics?.cardClicks,
-            cardImpressions: firstVideo.analytics?.cardImpressions,
-          }
-        });
-      } else {
-        // LOGS DE DÉBOGAGE: Aucune vidéo trouvée
-        console.warn("[FRONTEND-FETCH] Aucune vidéo trouvée dans la réponse!");
-        console.log("[FRONTEND-FETCH] Détails de la réponse vide:", {
-          responseType: typeof response,
-          responseVideosType: typeof response.videos,
-          responseVideosValue: response.videos
-        });
-      }
+      // Extraction des données (vérifier structure par le log 1)
+      const videosData = response?.videos || response?.items;
       
-      // LOGS DE DÉBOGAGE: Données avant mise à jour de l'état
-      const videosToSet = response.videos || [];
-      console.log("[FRONTEND-STATE] Données avant setVideos:", videosToSet);
-      console.log("[FRONTEND-STATE] Nombre de vidéos avant setVideos:", videosToSet.length);
+      // Log 2 (Données Extraites) 
+      console.log('[DEBUG-FETCH] Tableau "videosData" extrait:', videosData);
+      
+      // Log 3 (Nombre d'éléments)
+      console.log('[DEBUG-FETCH] Nombre d\'éléments extraits:', Array.isArray(videosData) ? videosData.length : 'N/A');
+      
+      // Préparation des données pour setState
+      const dataToSet = Array.isArray(videosData) ? videosData : [];
+      
+      // Log 4 (Avant setVideos)
+      console.log('[DEBUG-FETCH] Données passées à setVideos:', dataToSet);
       
       if (token) {
         // Append videos for pagination
         setVideos(prev => {
-          const newState = [...prev, ...videosToSet];
+          const newState = [...prev, ...dataToSet];
           console.log("[FRONTEND-STATE] Nouveau state (pagination):", newState.length, "vidéos");
           return newState;
         });
       } else {
         // Replace videos for initial load or refresh
-        setVideos(videosToSet);
-        console.log("[FRONTEND-STATE] Nouveau state (remplacement complet):", videosToSet.length, "vidéos");
+        setVideos(dataToSet);
+        console.log("[FRONTEND-STATE] Nouveau state (remplacement complet):", dataToSet.length, "vidéos");
       }
       
       setPageToken(response.nextPageToken || '');
@@ -226,17 +190,17 @@ export default function VideoPerformancePage() {
   
   return (
     <div className="py-4 px-1">
-      <h1 className="text-2xl font-semibold mb-4">Tableau de bord YouTube</h1>
+      <h1 className="text-2xl font-semibold mb-4">YouTube Dashboard</h1>
       
-      {/* Connexion YouTube */}
+      {/* YouTube Connection */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-medium">Compte YouTube</h2>
+            <h2 className="text-xl font-medium">YouTube Account</h2>
             <p className="text-gray-600 mt-1">
               {isConnected ? 
-                "Votre compte YouTube est connecté. Vous pouvez consulter les statistiques de performance." : 
-                "Connectez votre compte YouTube pour voir vos statistiques."}
+                "Your YouTube account is connected. You can view your performance statistics." : 
+                "Connect your YouTube account to view your video statistics."}
             </p>
           </div>
           <div>
@@ -245,27 +209,27 @@ export default function VideoPerformancePage() {
                 onClick={handleDisconnectYouTube}
                 className="bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors"
               >
-                Déconnecter
+                Disconnect
               </button>
             ) : (
               <button
                 onClick={handleConnectYouTube}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
               >
-                Connecter YouTube
+                Connect YouTube
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Contenu principal - conditionnellement affiché si connecté */}
+      {/* Main content - conditionally displayed if connected */}
       {isConnected ? (
         <>
-          {/* En-tête et filtres */}
+          {/* Header and filters */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-gray-700">Période: <span className="font-medium">30 derniers jours</span></p>
+              <p className="text-gray-700">Period: <span className="font-medium">Last 30 days</span></p>
             </div>
             <div>
               <button
@@ -275,23 +239,24 @@ export default function VideoPerformancePage() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Actualiser</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
-          {/* Composant temporaire de débogage pour afficher la structure complète */}
-          {videos.length > 0 && !loading && !error && (
+          {/* Debug component for structure inspection - only visible in development */}
+          {process.env.NODE_ENV === 'development' && videos.length > 0 && !loading && !error && (
             <DataDebugger
               data={videos[0]}
-              title="Premier video - Structure complète"
+              title="First video - Complete structure"
               expanded={false}
             />
           )}
           
-          {/* KPIs - Affichage des métriques agrégées */}
+          {/* KPIs - Display aggregated metrics */}
           {videos.length > 0 && !loading && !error && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              {/* Total Views */}
               <StatCard
                 title="Total Views"
                 value={formatNumber(aggregatedMetrics.totalViews)}
@@ -301,8 +266,60 @@ export default function VideoPerformancePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                 }
-                color="blue"
+                colorClass="bg-blue-50"
                 tooltip="Total number of views across all videos"
+              />
+              
+              {/* Average Retention % */}
+              <StatCard
+                title="Avg. Retention %"
+                value={`${aggregatedMetrics.avgViewPercentage.toFixed(1)}%`}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                }
+                colorClass="bg-green-50"
+                tooltip="Average percentage of each video watched by viewers"
+              />
+              
+              {/* Card CTR */}
+              <StatCard
+                title="Cards CTR"
+                value={`${aggregatedMetrics.avgCardCTR.toFixed(2)}%`}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                  </svg>
+                }
+                colorClass="bg-indigo-50"
+                tooltip="Average click-through rate for YouTube cards and endscreens"
+              />
+              
+              {/* Subscribers Gained */}
+              <StatCard
+                title="Subscribers"
+                value={`+${formatNumber(aggregatedMetrics.totalSubscribersGained)}`}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                }
+                colorClass="bg-red-50"
+                tooltip="Total subscribers gained from these videos"
+              />
+              
+              {/* Shares */}
+              <StatCard
+                title="Shares"
+                value={formatNumber(aggregatedMetrics.totalShares)}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                }
+                colorClass="bg-yellow-50"
+                tooltip="Total number of times videos were shared"
               />
               
               <StatCard
@@ -313,20 +330,21 @@ export default function VideoPerformancePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
                   </svg>
                 }
-                color="purple"
-                tooltip="Average engagement rate (interactions/views)"
+                colorClass="bg-purple-50"
+                tooltip="Average engagement rate ((likes + comments) / views)"
               />
               
+              {/* Retention Time */}
               <StatCard
-                title="Avg Retention"
-                value={`${aggregatedMetrics.avgViewPercentage.toFixed(2)}%`}
+                title="Avg Retention Time"
+                value={aggregatedMetrics.formattedAvgDuration || '0:00'}
                 icon={
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 }
-                color="green"
-                tooltip="Average percentage of video watched by viewers"
+                colorClass="bg-green-50"
+                tooltip="Average duration viewers watch your videos (minutes:seconds)"
               />
               
               <StatCard
@@ -337,8 +355,8 @@ export default function VideoPerformancePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                   </svg>
                 }
-                color="red"
-                tooltip="Total new subscribers from these videos"
+                colorClass="bg-red-50"
+                tooltip="Total new subscribers gained from these videos"
               />
             </div>
           )}
@@ -347,7 +365,7 @@ export default function VideoPerformancePage() {
           {videos.length > 0 && !loading && !error && (
             <DataDebugger
               data={aggregatedMetrics}
-              title="Métriques agrégées calculées"
+              title="Calculated Aggregated Metrics"
               expanded={false}
             />
           )}
@@ -357,7 +375,7 @@ export default function VideoPerformancePage() {
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center min-h-[300px] flex items-center justify-center">
               <div className="flex flex-col items-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500 mb-4"></div>
-                <p>Chargement des vidéos...</p>
+                <p>Loading videos...</p>
               </div>
             </div>
           ) : error ? (
@@ -367,7 +385,7 @@ export default function VideoPerformancePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-red-600 font-medium mb-2">Erreur</p>
+              <p className="text-red-600 font-medium mb-2">Error</p>
               <p className="text-gray-600">{error}</p>
             </div>
           ) : videos.length === 0 ? (
@@ -377,8 +395,8 @@ export default function VideoPerformancePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-lg font-medium mb-2">Aucune vidéo trouvée</p>
-              <p className="text-gray-600">Vous n'avez pas encore publié de vidéos sur votre chaîne YouTube.</p>
+              <p className="text-lg font-medium mb-2">No videos found</p>
+              <p className="text-gray-600">You haven't published any videos on your YouTube channel yet.</p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -397,7 +415,7 @@ export default function VideoPerformancePage() {
                     className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
                     disabled={loading}
                   >
-                    {loading ? 'Chargement...' : 'Charger plus de vidéos'}
+                    {loading ? 'Loading...' : 'Load more videos'}
                   </button>
                 </div>
               )}
@@ -411,15 +429,15 @@ export default function VideoPerformancePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <p className="text-lg font-medium mb-2">Connectez votre compte YouTube</p>
+          <p className="text-lg font-medium mb-2">Connect your YouTube account</p>
           <p className="text-gray-600 mb-6 max-w-md">
-            Pour voir vos statistiques YouTube, vous devez d'abord autoriser FunnelDoctor à accéder à vos données. Le processus est sécurisé et vous pouvez révoquer l'accès à tout moment.
+            To view your YouTube statistics, you must first authorize FunnelDoctor to access your data. The process is secure and you can revoke access at any time.
           </p>
           <button
             onClick={handleConnectYouTube}
             className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
           >
-            Connecter YouTube
+            Connect YouTube
           </button>
         </div>
       )}
