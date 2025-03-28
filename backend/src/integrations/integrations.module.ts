@@ -15,6 +15,7 @@ import { YouTubeDataService } from './youtube/youtube-data.service';
 import { YouTubeStorageService } from './youtube/youtube-storage.service';
 import { YouTubeDataController } from './youtube/youtube-data.controller';
 import { YouTubeDataTestController } from './youtube/youtube-data-test.controller';
+import { YouTubeAnalyticsController } from './youtube/youtube-analytics.controller';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { YouTubeDataTestController } from './youtube/youtube-data-test.controlle
       }),
     }),
   ],
-  controllers: [YouTubeController, YouTubeDataController, YouTubeDataTestController],
+  controllers: [YouTubeController, YouTubeDataController, YouTubeDataTestController, YouTubeAnalyticsController],
   providers: [
     EncryptionService,
     IntegrationService,

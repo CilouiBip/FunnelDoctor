@@ -6,6 +6,7 @@ import { SupabaseService } from '../../supabase/supabase.service';
 import { EncryptionService } from '../encryption/encryption.service';
 import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
+import { google } from 'googleapis'; // Import googleapis
 
 interface YouTubeTokens {
   access_token: string;
@@ -189,11 +190,42 @@ export class YouTubeAuthService extends IntegrationService {
       
       // Calculate token expiration timestamp
       const expiresAt = Math.floor(Date.now() / 1000) + (tokens.expires_in || 3600);
-      
-      // Store tokens
+
+      // Récupération du Channel ID
+      this.logger.log(`[Callback][${userId}] Tokens obtenus, récupération du Channel ID...`);
+      const oauth2Client = new google.auth.OAuth2(
+        this.clientId,
+        this.clientSecret,
+        this.redirectUri,
+      );
+      oauth2Client.setCredentials({ access_token: tokens.access_token });
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+      let youtubeChannelId: string | undefined;
+      try {
+        const channelResponse = await youtube.channels.list({
+          mine: true,
+          part: ['id'],
+          maxResults: 1,
+        });
+        // Assurer que youtubeChannelId est string ou undefined, jamais null
+        youtubeChannelId = channelResponse.data.items?.[0]?.id || undefined;
+        if (!youtubeChannelId) {
+          this.logger.warn(`[Callback][${userId}] Impossible de récupérer le youtube_channel_id via l'API channels.list.`);
+          // Décider si c'est une erreur bloquante ou non. Pour l'instant, on continue sans.
+        } else {
+          this.logger.log(`[Callback][${userId}] YouTube Channel ID récupéré: ${youtubeChannelId}`);
+        }
+      } catch (channelError) {
+        this.logger.error(`[Callback][${userId}] Erreur lors de la récupération du Channel ID: ${channelError.message}`, channelError.stack);
+        // On continue quand même pour ne pas bloquer l'auth, mais on log l'erreur
+      }
+
+      // Store tokens AND channel ID
       const success = await this.storeIntegrationConfig(userId, this.integration_type, {
         ...tokens,
         expires_at: expiresAt,
+        youtube_channel_id: youtubeChannelId, // Ajout du channel ID
       });
       
       if (!success) {

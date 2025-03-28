@@ -65,17 +65,17 @@ async function bootstrap() {
         try {
           const startDateStr = formatDate(startDate);
           const endDateStr = formatDate(endDate);
-          const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
-          logger.log('\nMu00e9triques de base:');
-          console.log(basicMetrics);
+          // const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
+          // logger.log('\nMu00e9triques de base:');
+          // console.log(basicMetrics);
           
-          const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
-          logger.log('\nTop 5 vidu00e9os:');
-          console.log(topVideos);
+          // const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
+          // logger.log('\nTop 5 vidu00e9os:');
+          // console.log(topVideos);
           
-          const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
-          logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
-          console.log(executiveSummary);
+          // const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
+          // logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
+          // console.log(executiveSummary);
           
           logger.log('\nTest de ru00e9cupu00e9ration des statistiques ru00e9ussi!');
         } catch (error) {
@@ -130,17 +130,17 @@ async function bootstrap() {
           try {
             const startDateStr = formatDate(startDate);
             const endDateStr = formatDate(endDate);
-            const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
-            logger.log('\nMu00e9triques de base:');
-            console.log(basicMetrics);
+            // const basicMetrics = await youtubeAnalyticsService.getBasicMetrics(TEST_USER_ID, startDateStr, endDateStr);
+            // logger.log('\nMu00e9triques de base:');
+            // console.log(basicMetrics);
             
-            const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
-            logger.log('\nTop 5 vidu00e9os:');
-            console.log(topVideos);
+            // const topVideos = await youtubeAnalyticsService.getTopVideos(TEST_USER_ID, startDateStr, endDateStr, 5);
+            // logger.log('\nTop 5 vidu00e9os:');
+            // console.log(topVideos);
             
-            const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
-            logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
-            console.log(executiveSummary);
+            // const executiveSummary = await youtubeAnalyticsService.getExecutiveSummary(TEST_USER_ID);
+            // logger.log('\nRu00e9sumu00e9 exu00e9cutif:');
+            // console.log(executiveSummary);
             
             logger.log('\nIntu00e9gration YouTube ru00e9ussie!');
           } catch (error) {

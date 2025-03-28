@@ -1,0 +1,913 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { YouTubeAuthService } from './youtube-auth.service';
+import { firstValueFrom } from 'rxjs';
+
+/**
+ * Service pour récupérer et agréger les statistiques YouTube pour un utilisateur
+ */
+@Injectable()
+export class YouTubeAnalyticsService {
+  private readonly logger = new Logger(YouTubeAnalyticsService.name);
+  
+  constructor(
+    private readonly youtubeAuthService: YouTubeAuthService,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {}
+  
+  /**
+   * Calcule les KPIs agrégés sur toutes les vidéos pour une période donnée
+   * @param userId ID de l'utilisateur
+   * @param period Période ('last7', 'last28', 'last30', 'last90')
+   * @returns Les KPIs agrégés pour toutes les vidéos
+   */
+  async getAggregatedKPIs(userId: string, period: string) {
+    try {
+      this.logger.log(`[SUMMARY] Calcul des KPIs agrégés pour user=${userId}, period=${period}`);
+      
+      // 1. Vérifier l'intégration
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        this.logger.warn(`[SUMMARY] Aucune intégration YouTube valide pour user=${userId}`);
+        return null;
+      }
+      
+      // 2. Récupérer le token
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        this.logger.warn(`[SUMMARY] Token d'accès YouTube non disponible pour user=${userId}`);
+        return null;
+      }
+      
+      // 3. Calculer les dates de la période
+      const { formattedStartDate, endDate, days } = this.calculatePeriodDates(period);
+      
+      // 4. Récupérer l'ID de la chaîne
+      const channelId = await this.getChannelId(config.access_token);
+      if (!channelId) {
+        this.logger.warn(`[SUMMARY] Impossible de récupérer l'ID de la chaîne pour user=${userId}`);
+        return null;
+      }
+      
+      // 5. Récupérer les IDs de toutes les vidéos publiques
+      const videoIds = await this.getAllPublicVideoIds(config.access_token, channelId);
+      this.logger.log(`[SUMMARY] Nombre de vidéos récupérées: ${videoIds.length}`);
+      
+      if (videoIds.length === 0) {
+        this.logger.warn(`[SUMMARY] Aucune vidéo trouvée pour user=${userId}`);
+        return {
+          views: 0,
+          watch_time_hours: 0,
+          avg_view_duration: '0:00',
+          engagement_rate: 0,
+          days: days,
+        };
+      }
+      
+      // 6. Calculer les KPIs agrégés à partir des IDs de vidéos
+      return await this.getAggregatedStatsFromVideoIds(
+        config.access_token,
+        videoIds,
+        formattedStartDate,
+        endDate,
+        days
+      );
+    } catch (error) {
+      this.logger.error(`[SUMMARY] Erreur lors du calcul des KPIs agrégés: ${error.message}`);
+      console.error(error);
+      return null;
+    }
+  }
+
+  /**
+   * Récupère tous les IDs de vidéos publiques d'une chaîne
+   * @param accessToken Token d'accès YouTube
+   * @param channelId ID de la chaîne
+   * @returns Liste des IDs de vidéos publiques
+   */
+  private async getAllPublicVideoIds(accessToken: string, channelId: string): Promise<string[]> {
+    try {
+      let nextPageToken = '';
+      const allVideoIds: string[] = [];
+      
+      // On limite à 5 pages (soit environ 250 vidéos max) pour éviter les problèmes de quotas
+      const maxPages = 5;
+      let currentPage = 0;
+      
+      do {
+        this.logger.log(`[VIDEOS] Récupération des vidéos (page ${currentPage + 1}/${maxPages})`);
+        
+        // Utiliser l'API YouTube Data v3 pour récupérer les IDs de vidéos
+        // C'est plus fiable que l'API Analytics pour cette tâche
+        const params: any = {
+          part: 'id,snippet,status',
+          channelId: channelId,
+          maxResults: 50, // Maximum autorisé par l'API
+          type: 'video',
+          fields: 'items(id,snippet(title),status(privacyStatus)),nextPageToken',
+        };
+        
+        // Ajouter le pageToken s'il existe
+        if (nextPageToken) {
+          params.pageToken = nextPageToken;
+        }
+        
+        const response = await firstValueFrom(
+          this.httpService.get('https://www.googleapis.com/youtube/v3/search', {
+            params: params,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          })
+        );
+        
+        // Filtrer pour ne garder que les vidéos publiques
+        const publicVideos = response.data.items.filter(
+          (item) => item.status?.privacyStatus === 'public' || !item.status
+        );
+        
+        // Extraire les IDs de vidéos
+        const pageVideoIds = publicVideos.map((item) => item.id.videoId);
+        allVideoIds.push(...pageVideoIds);
+        
+        // Récupérer le token de la page suivante
+        nextPageToken = response.data.nextPageToken;
+        currentPage++;
+        
+        this.logger.log(`[VIDEOS] ${pageVideoIds.length} vidéos trouvées sur cette page`);
+      } while (nextPageToken && currentPage < maxPages);
+      
+      return allVideoIds;
+    } catch (error) {
+      this.logger.error(`[VIDEOS] Erreur lors de la récupération des IDs de vidéos: ${error.message}`);
+      console.error(error);
+      return [];
+    }
+  }
+  
+  /**
+   * Calcule les KPIs agrégés à partir d'une liste d'IDs de vidéos
+   * @param accessToken Token d'accès YouTube
+   * @param videoIds Liste des IDs de vidéos
+   * @param startDate Date de début (format YYYY-MM-DD)
+   * @param endDate Date de fin (format YYYY-MM-DD)
+   * @param days Nombre de jours dans la période
+   * @returns Les KPIs agrégés pour toutes les vidéos
+   */
+  private async getAggregatedStatsFromVideoIds(
+    accessToken: string,
+    videoIds: string[],
+    startDate: string,
+    endDate: string,
+    days: number
+  ) {
+    try {
+      // Si la liste est vide, retourner des valeurs par défaut
+      if (videoIds.length === 0) {
+        return {
+          views: 0,
+          watch_time_hours: 0,
+          avg_view_duration: '0:00',
+          engagement_rate: 0,
+          days: days,
+        };
+      }
+      
+      this.logger.log(`[STATS] Récupération des statistiques pour ${videoIds.length} vidéos`);
+      
+      // Formats des IDs pour l'API Analytics - Utiliser un filtre avec les IDs
+      // Pour éviter l'erreur 400, nous devons utiliser le format correct pour le filtre
+      // et éventuellement limiter le nombre d'IDs par requête
+      
+      // Diviser les vidéos en groupes de 20 pour éviter des requêtes trop grandes
+      const chunkSize = 20;
+      const videoChunks: string[][] = [];
+      
+      for (let i = 0; i < videoIds.length; i += chunkSize) {
+        videoChunks.push(videoIds.slice(i, i + chunkSize));
+      }
+      
+      let totalViews = 0;
+      let totalMinutesWatched = 0;
+      let totalLikes = 0;
+      let totalComments = 0;
+      let totalDislikes = 0;
+      let totalShares = 0;
+      
+      // Traiter chaque chunk séparément
+      for (const chunk of videoChunks) {
+        const videoIdsFilter = chunk.map(id => `video==${id}`).join(',');
+        
+        const params = {
+          dimensions: 'day',
+          endDate: endDate,
+          ids: 'channel==MINE',
+          metrics: 'views,likes,comments,estimatedMinutesWatched,dislikes,shares,subscribersGained',
+          startDate: startDate,
+          filters: videoIdsFilter,
+        };
+        
+        this.logger.debug(`[STATS] Paramètres de la requête: ${JSON.stringify(params)}`);
+        
+        try {
+          const response = await firstValueFrom(
+            this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+              params: params,
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            })
+          );
+          
+          // Traiter les données
+          const rows = response.data.rows || [];
+          
+          if (rows.length > 0) {
+            for (const row of rows) {
+              totalViews += row[1] || 0;
+              totalLikes += row[2] || 0;
+              totalComments += row[3] || 0;
+              totalMinutesWatched += row[4] || 0;
+              totalDislikes += row[5] || 0;
+              totalShares += row[6] || 0;
+            }
+          }
+        } catch (chunkError) {
+          this.logger.warn(`[STATS] Erreur lors du traitement d'un groupe de vidéos: ${chunkError.message}`);
+          // Continuer avec le prochain groupe même si celui-ci a échoué
+        }
+      }
+      
+      // Calculer les KPIs dérivés
+      const watchTimeHours = Math.round(totalMinutesWatched / 60);
+      const avgViewDurationSeconds = totalViews > 0 ? (totalMinutesWatched * 60) / totalViews : 0;
+      const engagementRate =
+        totalViews > 0
+          ? ((totalLikes + totalComments + totalDislikes + totalShares) / totalViews) * 100
+          : 0;
+      
+      return {
+        views: totalViews,
+        watch_time_hours: watchTimeHours,
+        avg_view_duration: this.formatDuration(avgViewDurationSeconds),
+        engagement_rate: parseFloat(engagementRate.toFixed(2)),
+        days: days,
+      };
+    } catch (error) {
+      this.logger.error(`[STATS] Erreur lors du calcul des statistiques: ${error.message}`);
+      console.error(error);
+      
+      return {
+        views: 0,
+        watch_time_hours: 0,
+        avg_view_duration: '0:00',
+        engagement_rate: 0,
+        days: days,
+        error: error.message,
+      };
+    }
+  }
+  
+  /**
+   * Récupère l'ID de la chaîne YouTube de l'utilisateur
+   * @param accessToken Token d'accès YouTube
+   * @returns ID de la chaîne
+   */
+  private async getChannelId(accessToken: string): Promise<string | null> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get('https://www.googleapis.com/youtube/v3/channels', {
+          params: {
+            part: 'id',
+            mine: true,
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
+      );
+      
+      if (response.data.items && response.data.items.length > 0) {
+        return response.data.items[0].id;
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error(`[CHANNEL] Erreur lors de la récupération de l'ID de la chaîne: ${error.message}`);
+      console.error(error);
+      return null;
+    }
+  }
+  
+  /**
+   * Calcule les dates de début et de fin pour une période donnée
+   * @param period Période ('last7', 'last28', 'last30', 'last90')
+   * @returns Objet contenant les dates formatées et le nombre de jours
+   */
+  private calculatePeriodDates(period: string): { formattedStartDate: string; endDate: string; days: number } {
+    const today = new Date();
+    let days: number;
+    
+    switch (period) {
+      case 'last7':
+        days = 7;
+        break;
+      case 'last28':
+        days = 28;
+        break;
+      case 'last30':
+        days = 30;
+        break;
+      case 'last90':
+        days = 90;
+        break;
+      default:
+        days = 30; // Valeur par défaut
+    }
+    
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - days);
+    
+    const formattedStartDate = startDate.toISOString().split('T')[0];
+    const endDate = today.toISOString().split('T')[0];
+    
+    return { formattedStartDate, endDate, days };
+  }
+  
+  /**
+   * Formate une durée en secondes en format MM:SS
+   * @param seconds Durée en secondes
+   * @returns Durée formatée (MM:SS)
+   */
+  private formatDuration(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Récupère des statistiques détaillées pour une vidéo spécifique
+   * @param userId ID de l'utilisateur
+   * @param videoId ID de la vidéo YouTube
+   * @param period Période ('last7', 'last28', 'last30', 'last90')
+   * @returns Statistiques détaillées de la vidéo
+   */
+  async getVideoDetailedAnalytics(userId: string, videoId: string, period: string) {
+    try {
+      this.logger.log(`[DETAIL] Récupération des statistiques détaillées pour vidéo=${videoId}, user=${userId}, period=${period}`);
+      
+      // 1. Vérifier l'intégration
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        this.logger.warn(`[DETAIL] Aucune intégration YouTube valide pour user=${userId}`);
+        return null;
+      }
+      
+      // 2. Récupérer le token
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        this.logger.warn(`[DETAIL] Token d'accès YouTube non disponible pour user=${userId}`);
+        return null;
+      }
+      
+      // 3. Calculer les dates de la période
+      const { formattedStartDate, endDate, days } = this.calculatePeriodDates(period);
+      
+      // 4. Récupérer les statistiques détaillées avec YouTube Analytics API
+      const params = {
+        'dimensions': 'day',
+        'endDate': endDate,
+        'ids': 'channel==MINE',
+        'metrics': 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,dislikes,comments,shares,subscribersGained,subscribersLost',
+        'startDate': formattedStartDate,
+        'filters': `video==${videoId}`,
+      };
+      
+      const response = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          params: params,
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+        })
+      );
+      
+      // Traiter les données
+      const rows = response.data.rows || [];
+      
+      // Agréger les métriques
+      let totalViews = 0;
+      let totalWatchTimeMinutes = 0;
+      let totalLikes = 0;
+      let totalDislikes = 0;
+      let totalComments = 0;
+      let totalShares = 0;
+      let totalSubscribersGained = 0;
+      let totalSubscribersLost = 0;
+      
+      // Données quotidiennes pour graphiques
+      const dailyData: any[] = [];
+      
+      if (rows.length > 0) {
+        for (const row of rows) {
+          const date = row[0];
+          const views = row[1] || 0;
+          const watchTimeMinutes = row[2] || 0;
+          const avgViewDuration = row[3] || 0;
+          const avgViewPercentage = row[4] || 0;
+          const likes = row[5] || 0;
+          const dislikes = row[6] || 0;
+          const comments = row[7] || 0;
+          const shares = row[8] || 0;
+          const subscribersGained = row[9] || 0;
+          const subscribersLost = row[10] || 0;
+          
+          totalViews += views;
+          totalWatchTimeMinutes += watchTimeMinutes;
+          totalLikes += likes;
+          totalDislikes += dislikes;
+          totalComments += comments;
+          totalShares += shares;
+          totalSubscribersGained += subscribersGained;
+          totalSubscribersLost += subscribersLost;
+          
+          dailyData.push({
+            date,
+            views,
+            watchTimeMinutes,
+            likes,
+            comments,
+          });
+        }
+      }
+      
+      // Calculer les métriques dérivées
+      const watchTimeHours = Math.round(totalWatchTimeMinutes / 60);
+      const avgViewDurationSeconds = totalViews > 0 ? (totalWatchTimeMinutes * 60) / totalViews : 0;
+      const engagementRate = totalViews > 0 
+        ? ((totalLikes + totalComments + totalDislikes + totalShares) / totalViews) * 100 
+        : 0;
+      
+      // Calculer le pourcentage moyen de visionnage (retenir jusqu'à 100%)
+      const avgViewPercentage = totalViews > 0 ? Math.min(100, (avgViewDurationSeconds / 10) * 100) : 0;
+
+      return {
+        videoId,
+        period: { startDate: formattedStartDate, endDate, days },
+        views: totalViews,
+        watchTimeMinutes: totalWatchTimeMinutes,
+        watchTimeHours,
+        avgViewDuration: this.formatDuration(avgViewDurationSeconds),
+        avgViewDurationSeconds,
+        averageViewPercentage: avgViewPercentage, // Ajout de la propriété manquante
+        engagementRate: parseFloat(engagementRate.toFixed(2)),
+        likes: totalLikes,
+        dislikes: totalDislikes,
+        comments: totalComments,
+        shares: totalShares,
+        subscribersGained: totalSubscribersGained,
+        subscribersLost: totalSubscribersLost,
+        dailyData,
+      };
+    } catch (error) {
+      this.logger.error(`[DETAIL] Erreur lors de la récupération des statistiques détaillées: ${error.message}`);
+      console.error(error);
+      return null;
+    }
+  }
+
+  /**
+   * Récupère les métriques de base pour une période donnée
+   * @param userId ID de l'utilisateur
+   * @param startDate Date de début (format YYYY-MM-DD)
+   * @param endDate Date de fin (format YYYY-MM-DD)
+   * @returns Les métriques de base
+   */
+  async getBasicMetrics(userId: string, startDate: string, endDate: string) {
+    try {
+      this.logger.log(`[BASIC] Récupération des métriques de base pour user=${userId}, startDate=${startDate}, endDate=${endDate}`);
+      
+      // 1. Vérifier l'intégration
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        this.logger.warn(`[BASIC] Aucune intégration YouTube valide pour user=${userId}`);
+        return { analytics_available: false };
+      }
+      
+      // 2. Récupérer le token
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        this.logger.warn(`[BASIC] Token d'accès YouTube non disponible pour user=${userId}`);
+        return { analytics_available: false };
+      }
+      
+      // 3. Récupérer l'ID de la chaîne
+      const channelId = await this.getChannelId(config.access_token);
+      if (!channelId) {
+        this.logger.warn(`[BASIC] Impossible de récupérer l'ID de la chaîne pour user=${userId}`);
+        return { analytics_available: false };
+      }
+      
+      // 4. Récupérer les métriques de base avec YouTube Analytics API
+      const params = {
+        'dimensions': 'day',
+        'endDate': endDate,
+        'ids': `channel==${channelId}`,
+        'metrics': 'views,estimatedMinutesWatched,likes,dislikes,comments,shares,subscribersGained,subscribersLost',
+        'startDate': startDate,
+      };
+      
+      const response = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          params: params,
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+        })
+      );
+      
+      // Traiter les données
+      const rows = response.data.rows || [];
+      
+      if (rows.length === 0) {
+        return {
+          analytics_available: true,
+          views: 0,
+          watch_time_minutes: 0,
+          likes: 0,
+          dislikes: 0,
+          comments: 0,
+          shares: 0,
+          subscribers_gained: 0,
+          subscribers_lost: 0,
+          daily_data: [],
+        };
+      }
+      
+      let totalViews = 0;
+      let totalWatchTimeMinutes = 0;
+      let totalLikes = 0;
+      let totalDislikes = 0;
+      let totalComments = 0;
+      let totalShares = 0;
+      let totalSubscribersGained = 0;
+      let totalSubscribersLost = 0;
+      
+      const dailyData: any[] = [];
+      
+      for (const row of rows) {
+        const date = row[0];
+        const views = row[1] || 0;
+        const watchTimeMinutes = row[2] || 0;
+        const likes = row[3] || 0;
+        const dislikes = row[4] || 0;
+        const comments = row[5] || 0;
+        const shares = row[6] || 0;
+        const subscribersGained = row[7] || 0;
+        const subscribersLost = row[8] || 0;
+        
+        totalViews += views;
+        totalWatchTimeMinutes += watchTimeMinutes;
+        totalLikes += likes;
+        totalDislikes += dislikes;
+        totalComments += comments;
+        totalShares += shares;
+        totalSubscribersGained += subscribersGained;
+        totalSubscribersLost += subscribersLost;
+        
+        dailyData.push({
+          date,
+          views,
+          watch_time_minutes: watchTimeMinutes,
+          likes,
+          comments,
+        });
+      }
+      
+      return {
+        analytics_available: true,
+        views: totalViews,
+        watch_time_minutes: totalWatchTimeMinutes,
+        likes: totalLikes,
+        dislikes: totalDislikes,
+        comments: totalComments,
+        shares: totalShares,
+        subscribers_gained: totalSubscribersGained,
+        subscribers_lost: totalSubscribersLost,
+        daily_data: dailyData,
+      };
+    } catch (error) {
+      this.logger.error(`[BASIC] Erreur lors de la récupération des métriques de base: ${error.message}`);
+      console.error(error);
+      return { analytics_available: false, error: error.message };
+    }
+  }
+
+  /**
+   * Récupère les vidéos les plus performantes pour une période donnée
+   * @param userId ID de l'utilisateur
+   * @param startDate Date de début (format YYYY-MM-DD)
+   * @param endDate Date de fin (format YYYY-MM-DD)
+   * @param maxResults Nombre maximum de résultats (par défaut: 10)
+   * @returns Les vidéos les plus performantes
+   */
+  async getTopVideos(userId: string, startDate: string, endDate: string, maxResults = 10) {
+    try {
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        return { videos: [], analytics_available: false };
+      }
+      
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        return { videos: [], analytics_available: false };
+      }
+      
+      // Récupérer l'ID de la chaîne
+      const channelId = await this.getChannelId(config.access_token);
+      if (!channelId) {
+        return { videos: [], analytics_available: false };
+      }
+      
+      // Récupérer les données des vidéos les plus vues
+      const videoStatsResponse = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            'dimensions': 'video',
+            'endDate': endDate,
+            'ids': `channel==${channelId}`,
+            'metrics': 'views,estimatedMinutesWatched,likes,comments,shares,subscribersGained',
+            'sort': '-views',
+            'maxResults': maxResults,
+            'startDate': startDate,
+          },
+        })
+      );
+      
+      if (!videoStatsResponse.data.rows || videoStatsResponse.data.rows.length === 0) {
+        return { videos: [], analytics_available: true };
+      }
+      
+      // Récupérer les détails des vidéos (titre, vignette, etc.)
+      const videoIds = videoStatsResponse.data.rows.map(row => row[0]);
+      const videoDetailsResponse = await firstValueFrom(
+        this.httpService.get('https://www.googleapis.com/youtube/v3/videos', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            part: 'snippet,contentDetails,statistics',
+            id: videoIds.join(','),
+          },
+        })
+      );
+      
+      // Combiner les statistiques et les détails des vidéos
+      const videos: any[] = [];
+      
+      for (const statsRow of videoStatsResponse.data.rows) {
+        const videoId = statsRow[0];
+        const views = statsRow[1] || 0;
+        const watchTimeMinutes = statsRow[2] || 0;
+        const likes = statsRow[3] || 0;
+        const comments = statsRow[4] || 0;
+        const shares = statsRow[5] || 0;
+        const subscribersGained = statsRow[6] || 0;
+        
+        // Rechercher les détails de la vidéo dans la réponse de l'API Video
+        const videoDetails = videoDetailsResponse.data.items.find(item => item.id === videoId);
+        
+        if (videoDetails) {
+          const title = videoDetails.snippet?.title || 'Sans titre';
+          const thumbnailUrl = videoDetails.snippet?.thumbnails?.medium?.url || '';
+          const publishedAt = videoDetails.snippet?.publishedAt || '';
+          const duration = videoDetails.contentDetails?.duration || '';
+          
+          // Convertir la durée ISO 8601 en secondes
+          const durationInSeconds = this.parseIsoDuration(duration);
+          
+          videos.push({
+            id: videoId,
+            title,
+            thumbnail: thumbnailUrl,
+            published_at: publishedAt,
+            duration: this.formatDuration(durationInSeconds),
+            duration_seconds: durationInSeconds,
+            views,
+            watch_time_minutes: watchTimeMinutes,
+            likes,
+            comments,
+            shares,
+            subscribers_gained: subscribersGained,
+          });
+        }
+      }
+      
+      return { videos, analytics_available: true };
+    } catch (error) {
+      this.logger.error(`[TOP] Erreur lors de la récupération des vidéos les plus performantes: ${error.message}`);
+      console.error(error);
+      return { videos: [], analytics_available: false, error: error.message };
+    }
+  }
+
+  /**
+   * Récupère un résumé exécutif des performances YouTube
+   * @param userId ID de l'utilisateur
+   * @param days Nombre de jours (par défaut: 30)
+   * @returns Le résumé exécutif
+   */
+  async getExecutiveSummary(userId: string, days = 30) {
+    try {
+      const endDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      const formattedStartDate = startDate.toISOString().split('T')[0];
+      
+      // Vérifier l'intégration
+      const isValid = await this.youtubeAuthService.hasValidIntegration(userId);
+      if (!isValid) {
+        return { analytics_available: false };
+      }
+      
+      // Récupérer le token
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token) {
+        return { analytics_available: false };
+      }
+      
+      // Récupérer l'ID de la chaîne
+      const channelId = await this.getChannelId(config.access_token);
+      if (!channelId) {
+        return { analytics_available: false };
+      }
+      
+      // Récupérer les métriques générales de la chaîne
+      const channelResponse = await firstValueFrom(
+        this.httpService.get('https://www.googleapis.com/youtube/v3/channels', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            part: 'snippet,statistics',
+            id: channelId,
+          },
+        })
+      );
+      
+      const channelInfo = channelResponse.data.items[0];
+      const channelTitle = channelInfo.snippet.title;
+      const totalSubscribers = parseInt(channelInfo.statistics.subscriberCount, 10);
+      const totalVideos = parseInt(channelInfo.statistics.videoCount, 10);
+      const totalViews = parseInt(channelInfo.statistics.viewCount, 10);
+      
+      // Récupérer les métriques de la période
+      const periodMetricsResponse = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            'dimensions': 'day',
+            'endDate': endDate,
+            'ids': `channel==${channelId}`,
+            'metrics': 'views,estimatedMinutesWatched,likes,dislikes,comments,shares,subscribersGained,subscribersLost',
+            'startDate': formattedStartDate,
+          },
+        })
+      );
+      
+      // Récupérer les vidéos les plus performantes
+      const topVideosResponse = await firstValueFrom(
+        this.httpService.get('https://youtubeanalytics.googleapis.com/v2/reports', {
+          headers: {
+            Authorization: `Bearer ${config.access_token}`,
+          },
+          params: {
+            'dimensions': 'video',
+            'endDate': endDate,
+            'ids': `channel==${channelId}`,
+            'metrics': 'views,estimatedMinutesWatched,likes,comments',
+            'sort': '-views',
+            'maxResults': 5,
+            'startDate': formattedStartDate,
+          },
+        })
+      );
+      
+      // Agréger les métriques de la période
+      const rows = periodMetricsResponse.data.rows || [];
+      let periodViews = 0;
+      let periodWatchTime = 0;
+      let periodLikes = 0;
+      let periodComments = 0;
+      let periodSubscribersGained = 0;
+      
+      for (const row of rows) {
+        periodViews += row[1] || 0;
+        periodWatchTime += row[2] || 0;
+        periodLikes += row[3] || 0;
+        periodComments += row[5] || 0;
+        periodSubscribersGained += row[7] || 0;
+      }
+      
+      // Traiter les vidéos les plus performantes
+      const topVideos: any[] = [];
+      const topVideoIds: string[] = [];
+      
+      if (topVideosResponse.data.rows && topVideosResponse.data.rows.length > 0) {
+        for (const row of topVideosResponse.data.rows) {
+          topVideoIds.push(row[0]);
+        }
+        
+        // Récupérer les détails des vidéos
+        const videoDetailsResponse = await firstValueFrom(
+          this.httpService.get('https://www.googleapis.com/youtube/v3/videos', {
+            headers: {
+              Authorization: `Bearer ${config.access_token}`,
+            },
+            params: {
+              part: 'snippet,contentDetails',
+              id: topVideoIds.join(','),
+            },
+          })
+        );
+        
+        for (let i = 0; i < topVideosResponse.data.rows.length; i++) {
+          const statsRow = topVideosResponse.data.rows[i];
+          const videoId = statsRow[0];
+          const views = statsRow[1] || 0;
+          const watchTime = statsRow[2] || 0;
+          const likes = statsRow[3] || 0;
+          const comments = statsRow[4] || 0;
+          
+          // Rechercher les détails de la vidéo
+          const videoDetails = videoDetailsResponse.data.items.find(item => item.id === videoId);
+          
+          if (videoDetails) {
+            topVideos.push({
+              id: videoId,
+              title: videoDetails.snippet.title,
+              thumbnail: videoDetails.snippet.thumbnails.medium.url,
+              views,
+              watch_time_minutes: watchTime,
+              likes,
+              comments,
+            });
+          }
+        }
+      }
+      
+      return {
+        analytics_available: true,
+        channel: {
+          title: channelTitle,
+          total_subscribers: totalSubscribers,
+          total_videos: totalVideos,
+          total_views: totalViews,
+        },
+        period: {
+          days,
+          start_date: formattedStartDate,
+          end_date: endDate,
+          views: periodViews,
+          watch_time_minutes: periodWatchTime,
+          watch_time_hours: Math.round(periodWatchTime / 60),
+          likes: periodLikes,
+          comments: periodComments,
+          subscribers_gained: periodSubscribersGained,
+        },
+        top_videos: topVideos,
+      };
+    } catch (error) {
+      this.logger.error(`[EXEC] Erreur lors de la récupération du résumé exécutif: ${error.message}`);
+      console.error(error);
+      return { analytics_available: false, error: error.message };
+    }
+  }
+
+  /**
+   * Analyse une durée ISO 8601 (ex: PT1H30M15S) et la convertit en secondes
+   * @param isoDuration Durée au format ISO 8601
+   * @returns Durée en secondes
+   */
+  private parseIsoDuration(isoDuration: string): number {
+    const regex = /PT(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)S)?/;
+    const matches = isoDuration.match(regex);
+    
+    if (!matches) {
+      return 0;
+    }
+    
+    const hours = parseInt(matches[1] || '0', 10);
+    const minutes = parseInt(matches[2] || '0', 10);
+    const seconds = parseInt(matches[3] || '0', 10);
+    
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+}

@@ -60,17 +60,20 @@ export const testYouTubeApiConnection = async () => {
  * @param pageToken Optional token for pagination
  * @param limit Optional limit of videos to fetch
  * @param order Optional order parameter
+ * @param period Optional period parameter (last7, last28, last30, last90)
  * @returns Promise with YouTube videos response
  */
 export const fetchVideos = async (
   pageToken?: string,
   limit: number = 10,
-  order: 'date' | 'rating' | 'viewCount' | 'title' = 'date'
+  order: 'date' | 'rating' | 'viewCount' | 'title' = 'date',
+  period: 'last7' | 'last28' | 'last30' | 'last90' = 'last28'
 ): Promise<YouTubeResponse> => {
   try {
     const params: Record<string, string | number> = { limit };
     if (pageToken) params.pageToken = pageToken;
     if (order) params.order = order;
+    if (period) params.period = period; // Ajout du paramètre de période
 
     // This will be proxied through Next.js to your ngrok backend
     // Passage à l'endpoint standard pour stocker les vidéos en DB
@@ -126,7 +129,7 @@ export const fetchVideos = async (
 export const getVideoAnalytics = async (videoId: string) => {
   try {
     const finalUrl = `${YOUTUBE_API_URL}/youtube/analytics/video/${videoId}`;
-    console.log("URL appelu00e9e (getVideoAnalytics):", finalUrl);
+    console.log("URL appelée (getVideoAnalytics):", finalUrl);
     const response = await authenticatedAxios.get(finalUrl);
     return response.data;
   } catch (error) {
@@ -134,6 +137,72 @@ export const getVideoAnalytics = async (videoId: string) => {
     throw error;
   }
 };
+
+/**
+ * Interface pour la réponse de l'endpoint /api/youtube/analytics/summary
+ */
+interface AggregatedKPIsResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    period: {
+      startDate: string;
+      endDate: string;
+      days: number;
+    };
+    totalVideos: number;
+    totalViews: number;
+    avgViewPercentage: number;
+    totalSubscribersGained: number;
+    avgEngagementRate: number;
+    totalLikes: number;
+    totalComments: number;
+    totalShares: number;
+    totalWatchTimeMinutes: number;
+    avgViewDuration: number;
+    formattedAvgDuration: string;
+  };
+}
+
+/**
+ * Récupère les KPIs agrégés calculés sur toutes les vidéos pour une période donnée
+ * @param period Période ('last7', 'last28', 'last30', 'last90')
+ * @returns Promise avec les KPIs agrégés
+ */
+export const fetchAggregatedKPIs = async (period: 'last7' | 'last28' | 'last30' | 'last90' = 'last28') => {
+  try {
+    const finalUrl = `${YOUTUBE_API_URL}/analytics/summary`;
+    console.log(`[KPIS] Récupération des KPIs agrégés pour la période ${period}`);
+    console.log(`[KPIS] URL utilisée: ${finalUrl}`); // Log pour déboguer l'URL
+    
+    // Assurons-nous de passer la période comme paramètre de requête
+    const response = await authenticatedAxios.get<AggregatedKPIsResponse>(finalUrl, { 
+      params: { period },
+      timeout: 60000 // *** AUGMENTATION TIMEOUT à 60 secondes ***
+    });
+    
+    // LOGS de débogage des KPIs récupérés
+    console.log(`[KPIS] Réponse du service /summary avec statut ${response.status}:`, response.data);
+    
+    if (!response.data.success) {
+      console.error(`[KPIS] La réponse indique un échec:`, response.data.message);
+      throw new Error(response.data.message || 'Erreur lors de la récupération des KPIs agrégés');
+    }
+    
+    if (!response.data.data) {
+      console.error(`[KPIS] La propriété 'data' est manquante dans la réponse`);
+      throw new Error('Format de réponse invalide: données manquantes');
+    }
+    
+    console.log(`[KPIS] Données reçues pour ${response.data.data.totalVideos} vidéos sur ${period}`);
+    return response.data.data;
+  } catch (error) {
+    console.error(`[KPIS] Erreur lors de la récupération des KPIs agrégés:`, error);
+    throw error;
+  }
+};
+
+
 
 /**
  * Initiates the YouTube OAuth flow

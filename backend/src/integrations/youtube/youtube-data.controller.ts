@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards, Logger, NotFoundException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { YouTubeDataService, VideoDTO, VideoQueryOptions, VideoStatsDTO } from './youtube-data.service';
 
@@ -23,7 +23,8 @@ export class YouTubeDataController {
     @Query('limit') limit?: number,
     @Query('pageToken') pageToken?: string,
     @Query('order') order?: 'date' | 'rating' | 'viewCount' | 'title',
-    @Query('refresh') refresh?: boolean
+    @Query('refresh') refresh?: boolean,
+    @Query('period') period?: 'last7' | 'last28' | 'last30' | 'last90'
   ) {
     try {
       const userId = req.user.id;
@@ -34,12 +35,15 @@ export class YouTubeDataController {
       if (limit) options.limit = parseInt(limit as unknown as string, 10);
       if (pageToken) options.pageToken = pageToken;
       if (order) options.order = order;
+      if (period) options.period = period;
+      
+      this.logger.log(`[CONTROLLER] Options de requête: ${JSON.stringify(options)}`);
       
       // CORRECTION IMPORTANTE: On appelle toujours getUserVideos (flux complet) au lieu de getStoredVideos
       // Le paramètre refresh indique si on force une récupération depuis l'API YouTube
       const refreshFromApi = refresh === true || (typeof refresh === 'string' && (refresh === 'true' || refresh === ''));
       
-      this.logger.log(`[CONTROLLER] Appel getUserVideos (flux complet) avec refresh=${refreshFromApi} pour user=${userId}`);
+      this.logger.log(`[CONTROLLER] Appel getUserVideos (flux complet) avec refresh=${refreshFromApi} pour user=${userId}, period=${options.period || 'default'}`);
       // CORRECTION FINALE: Toujours stocker les données dans Supabase (storeInDb=true)
       return this.youtubeDataService.getUserVideos(userId, options, true);
     } catch (error) {
@@ -93,7 +97,11 @@ export class YouTubeDataController {
       const userId = req.user.id;
       this.logger.log(`Récupération des détails de la vidéo ${videoId} pour l'utilisateur ${userId}`);
       
-      return this.youtubeDataService.getVideoDetails(userId, videoId);
+      const videoDetails = await this.youtubeDataService.getVideoDetails(userId, videoId);
+      if (!videoDetails) {
+        throw new NotFoundException(`Video with ID ${videoId} not found.`);
+      }
+      return videoDetails;
     } catch (error) {
       this.logger.error(`Erreur lors de la récupération des détails de la vidéo: ${error.message}`);
       throw error;

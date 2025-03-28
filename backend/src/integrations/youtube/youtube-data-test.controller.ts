@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Query, Logger, NotFoundException } from '@nestjs/common';
 import { Public } from '../../auth/decorators/public.decorator';
 import { YouTubeDataService, VideoQueryOptions, VideoStatsDTO } from './youtube-data.service';
 
@@ -93,7 +93,11 @@ export class YouTubeDataTestController {
       const userId = this.TEST_USER_ID;
       this.logger.log(`[TEST] Récupération des détails de la vidéo ${videoId} pour l'utilisateur ${userId}`);
       
-      return this.youtubeDataService.getVideoDetails(userId, videoId);
+      const videoDetails = await this.youtubeDataService.getVideoDetails(userId, videoId);
+      if (!videoDetails) {
+        throw new NotFoundException(`Video with ID ${videoId} not found.`);
+      }
+      return videoDetails;
     } catch (error) {
       this.logger.error(`[TEST] Erreur lors de la récupération des détails de la vidéo: ${error.message}`);
       throw error;

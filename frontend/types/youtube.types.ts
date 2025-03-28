@@ -4,6 +4,11 @@
 export interface YouTubeVideo {
   id: string;
   dbId?: string; // ID dans Supabase
+  title?: string; // Pour faciliter l'accès direct sans passer par snippet
+  description?: string; // Pour faciliter l'accès direct
+  thumbnailUrl?: string; // URL de la miniature pour accès direct
+  channelTitle?: string; // Titre de la chaîne pour accès direct
+  publishedAt?: string; // Date de publication pour accès direct
   snippet: {
     title: string;
     description: string;
@@ -79,18 +84,20 @@ export interface YouTubeThumbnail {
  * YouTube API response interface
  */
 export interface YouTubeResponse {
-  kind: string;
-  etag: string;
+  kind?: string;
+  etag?: string;
   nextPageToken?: string;
   prevPageToken?: string;
-  pageInfo: {
+  pageInfo?: {
     totalResults: number;
     resultsPerPage: number;
   };
   // Propriété selon le format de l'API YouTube standard
   items?: YouTubeVideo[];
   // Propriété selon le format renvoyé par notre backend
-  videos: YouTubeVideo[];
+  videos?: YouTubeVideo[];
+  // Réponse simplifiée
+  data?: any;
 }
 
 /**
@@ -114,6 +121,7 @@ export interface GetVideosParams {
   pageToken?: string;
   order?: 'date' | 'rating' | 'viewCount' | 'title';
   refresh?: boolean;
+  period?: 'last7' | 'last28' | 'last30' | 'last90';
 }
 
 /**
