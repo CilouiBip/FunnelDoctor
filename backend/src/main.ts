@@ -8,7 +8,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   
   // Get ConfigService instance
   const configService = app.get(ConfigService);

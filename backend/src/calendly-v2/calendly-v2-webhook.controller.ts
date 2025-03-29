@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Headers,
+  HttpCode,
   Logger,
   Post,
   Req,
@@ -34,13 +35,30 @@ export class CalendlyV2WebhookController {
    * Gère les événements 'invitee.created' et 'invitee.canceled'
    */
   @Post('webhook-v2')
+  @HttpCode(200) // Calendly attend un statut 200 OK
   async handleWebhook(
-    @Body() payload: CalendlyWebhookEventDto,
-    @Headers('calendly-webhook-signature') signature: string,
     @Req() request: any,
+    @Headers('calendly-webhook-signature') signature: string,
   ) {
-    this.logger.log(`Webhook v2 reçu: ${payload.event}`);
-    this.logger.debug('Détail complet du payload:', JSON.stringify(payload));
+    // Log brut AVANT toute validation de DTO
+    this.logger.log('<<< RAW WEBHOOK RECEIVED on /webhook-v2 >>>');
+    try {
+      this.logger.log(`Raw Body Type: ${typeof request.body}`);
+      this.logger.log(`Raw Body Content: ${JSON.stringify(request.body, null, 2)}`);
+    } catch (e) {
+      this.logger.error('Error logging raw body:', e);
+      // Essayer de logguer différemment si ce n'est pas du JSON
+      console.log('Raw Body (console):', request.body);
+    }
+    
+    // Suite du code existant
+    const payload = request.body;
+    if (payload && payload.event) {
+      this.logger.log(`Webhook v2 reçu: ${payload.event}`);
+      this.logger.debug('Détail complet du payload:', JSON.stringify(payload));
+    } else {
+      this.logger.warn('Payload reçu sans propriété event');
+    }
     this.logger.debug(`Signature: ${signature}`);
 
     // Vérifier la signature du webhook (sécurité)

@@ -110,37 +110,44 @@ export class CalendlyV2Service {
    * @param resource La ressource de l'événement Calendly
    * @returns Le visitor_id extrait ou null
    */
-  extractVisitorIdFromResource(resource: CalendlyResourceDto): string | null {
-    if (!resource.tracking) {
-      this.logger.warn('No tracking information found in Calendly event');
-      return null;
+  extractVisitorIdFromResource(resource: any): string | null {
+    this.logger.log(`[extractVisitorId] Attempting to extract fd_tlid from tracking parameters`);
+    // Tentative de lecture via tracking_parameters (structure attendue par le DTO corrigé - mais on va simplifier l'accès)
+    // Calendly peut mettre les paramètres custom directement dans tracking ou dans tracking.tracking_parameters
+    const tlidFromParams = resource?.tracking?.tracking_parameters?.fd_tlid;
+    if (tlidFromParams) {
+      this.logger.log(`[extractVisitorId] Found in tracking_parameters.fd_tlid: ${tlidFromParams}`);
+      return String(tlidFromParams); // Assurer que c'est une string
     }
-
-    const { tracking } = resource;
+  
+    // Tentative de lecture directe depuis resource.tracking (plus courant pour les UTMs passés en params)
+    const tlidDirect = resource?.tracking?.fd_tlid;
+     if (tlidDirect) {
+       this.logger.log(`[extractVisitorId] Found directly in tracking.fd_tlid: ${tlidDirect}`);
+       return String(tlidDirect); // Assurer que c'est une string
+     }
+  
+    // Dernière tentative : parfois les params sont à la racine de la ressource ? (Moins probable)
+    const tlidRoot = resource?.fd_tlid;
+     if (tlidRoot) {
+       this.logger.log(`[extractVisitorId] Found directly in resource.fd_tlid: ${tlidRoot}`);
+       return String(tlidRoot); // Assurer que c'est une string
+     }
+  
+  
+    this.logger.warn('[extractVisitorId] No fd_tlid found.');
+    // Optionnel : Tenter utm_medium en dernier recours SI et SEULEMENT SI utm_source == 'visitor_id' ?
+    // const utmSource = resource?.tracking?.utm_source;
+    // const utmMedium = resource?.tracking?.utm_medium;
+    // if (utmSource === 'visitor_id' && utmMedium) {
+    //    this.logger.log(`[extractVisitorId] Found fallback in utm_medium: ${utmMedium}`);
+    //    return String(utmMedium);
+    // }
+  
+    return null; // Retourne null si non trouvé
+  }//
     
-    // Méthode 1: format visitor_id/value dans utm_source/utm_medium
-    if (tracking.utm_source === 'visitor_id' && tracking.utm_medium) {
-      this.logger.log(`Visitor ID found in utm_medium: ${tracking.utm_medium}`);
-      return tracking.utm_medium;
-    }
-    
-    // Méthode 2: valeur directe dans utm_content
-    if (tracking.utm_content && tracking.utm_content.startsWith('visitor_')) {
-      this.logger.log(`Visitor ID found in utm_content: ${tracking.utm_content}`);
-      return tracking.utm_content;
-    }
-    
-    // Méthode 3: paramètre fd_tlid personnalisé
-    if (tracking.fd_tlid) {
-      this.logger.log(`Visitor ID found in fd_tlid: ${tracking.fd_tlid}`);
-      return tracking.fd_tlid;
-    }
-
-    this.logger.warn('No visitor_id found in tracking parameters');
-    return null;
-  }
-
-  /**
+  /** //
    * Récupère les détails d'un événement planifié
    * @param uuid UUID de l'événement
    */

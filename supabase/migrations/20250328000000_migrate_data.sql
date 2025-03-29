@@ -20,7 +20,7 @@ BEGIN
     email, 
     TRUE, 
     created_at, 
-    updated_at
+    NOW()
   FROM 
     leads
   WHERE 
@@ -38,7 +38,7 @@ BEGIN
     phone, 
     FALSE, 
     created_at, 
-    updated_at
+    NOW()
   FROM 
     leads
   WHERE 
@@ -85,9 +85,9 @@ BEGIN
   UPDATE conversion_events
   SET event_category = 
     CASE 
-      WHEN event_type IN ('PAYMENT', 'PURCHASE_MADE') THEN 'revenue'
-      WHEN event_type IN ('DEMO_SCHEDULED', 'DEMO_CANCELED') THEN 'appointment'
-      WHEN event_type IN ('SIGNUP', 'LOGIN') THEN 'user_account'
+      WHEN event_type = 'PURCHASE_MADE' THEN 'revenue'
+      WHEN event_type = 'DEMO_REQUEST' THEN 'appointment'
+      WHEN event_type = 'SIGNUP' THEN 'user_account'
       ELSE 'other'
     END
   WHERE event_category IS NULL;
@@ -106,8 +106,8 @@ BEGIN
   SET source_system = 
     CASE 
       WHEN event_data->>'source' IS NOT NULL THEN event_data->>'source'
-      WHEN event_type IN ('DEMO_SCHEDULED', 'DEMO_CANCELED') THEN 'calendly'
-      WHEN page_url LIKE '%calendly%' THEN 'calendly'
+      WHEN event_type = 'DEMO_REQUEST' THEN 'calendly'
+      WHEN event_data->>'page_url' LIKE '%calendly%' THEN 'calendly'
       ELSE 'website'
     END
   WHERE source_system IS NULL;

@@ -1,19 +1,15 @@
-# FunnelDoctor - Roadmap de Développement
+# FunnelDoctor - Roadmap de Développement (Version Mars 2025 - Stratégie v2)
 
-Cette roadmap représente la vision détaillée du produit FunnelDoctor, incluant la configuration du "puzzle funnel", le traitement des données et l'architecture technique. Le document sert de référence pour toute l'équipe et guide le développement futur.
+**Document de Référence Principal**
 
-## 1. Rappel du Contexte
+## 1. Contexte et Vision
 
-**FunnelDoctor** est un outil permettant de tracer le parcours d'un lead depuis la source (YouTube/Instagram/etc.) jusqu'à la conversion finale (CTA, Book Call, Payment).
+**Objectif FunnelDoctor :** Fournir aux infopreneurs et créateurs de contenu une vision claire et unifiée de la performance de leurs funnels marketing et ventes, en particulier pour le trafic organique (YouTube, etc.). L'outil vise à agréger les données de multiples sources (Analytics, CRM, Booking, Paiement) et à les lier au parcours visiteur pour identifier les points forts et les points faibles du funnel, de la source initiale jusqu'à la vente.
 
-**Composants clés :**
-- **Snippet** : Captation UTMs, insertion d'événements "click," "page_view," "purchase," etc. envoyés au backend.
-- **Dashboard** : Un ensemble de pages d'analyse (Executive Summary, Funnel Analytics, Source Breakdown, Vidalytics integration).
+**Problème Principal Adressé :** La fragmentation des données et la difficulté à tracker de manière fiable le parcours d'un prospect à travers différents outils (YouTube -> Landing Page -> Opt-in -> Booking -> Paiement), surtout en gérant les identifiants multiples (cookies, emails).
 
-**État actuel :**
-- ✅ Tables dans Supabase : leads, touchpoints, conversion_events, etc.
-- ✅ Snippet fonctionnel (en local) + migrations sur Supabase.
-- 🔄 À finaliser : UX puzzle funnel + traitement des données.
+**Stratégie Technique Clé Adoptée :**
+Pour assurer un tracking fiable et robuste sans perturber les données marketing de l'utilisateur, nous adoptons l'approche **"Option 2 : Capture Frontend + API Pré-Association"** couplée à une logique de **"Data Stitching"** basée sur un modèle "Master Lead".
 
 ## 1.1 Objectif Actuel : Visitor-Lead Bridging
 

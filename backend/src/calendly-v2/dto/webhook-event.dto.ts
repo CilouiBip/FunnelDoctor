@@ -26,6 +26,10 @@ export class TrackingInfoDto {
   @IsString()
   @IsOptional()
   fd_tlid?: string; // Champ personnalisé pour visitor_id
+  
+  @IsObject()
+  @IsOptional()
+  tracking_parameters?: Record<string, string>; // Pour les paramètres de tracking supplémentaires
 }
 
 // Structure pour les informations de paiement
