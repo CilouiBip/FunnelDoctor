@@ -41,11 +41,16 @@ export default function TestUTM() {
     checkScriptLoaded();
   }, []);
 
-  // Générer une URL de test avec UTMs
-  const generateTestUrl = () => {
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?utm_source=youtube&utm_medium=video&utm_campaign=test&utm_content=bridging_demo`;
-  };
+  // Valeur par défaut sûre pour l'URL de test (utilisée lors du rendu côté serveur)
+  const [testUrl, setTestUrl] = useState<string>('/test-utm?utm_source=youtube&utm_medium=video&utm_campaign=test&utm_content=bridging_demo');
+  
+  // useEffect supplémentaire pour générer l'URL de test côté client uniquement
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const baseUrl = window.location.origin + window.location.pathname;
+      setTestUrl(`${baseUrl}?utm_source=youtube&utm_medium=video&utm_campaign=test&utm_content=bridging_demo`);
+    }
+  }, []);
 
   return (
     <div className="container mx-auto p-4">
@@ -86,7 +91,7 @@ export default function TestUTM() {
         
         <div className="flex flex-col space-y-4">
           <a 
-            href={generateTestUrl()}
+            href={testUrl}
             className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors w-fit"
           >
             Tester avec paramètres UTM (YouTube)

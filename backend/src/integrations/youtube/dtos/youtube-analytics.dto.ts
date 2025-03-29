@@ -7,6 +7,8 @@ export interface AggregatedVideoKPIsDTO {
   totalVideosAnalysed: number; // Nombre d'appels analytics réussis
   period: { startDate: string; endDate: string };
   totalViews: number;
+  totalLikes: number; // Total des likes sur l'ensemble des vidéos
+  totalComments: number; // Total des commentaires sur l'ensemble des vidéos
   averageRetentionPercentage: number; // En % (0-100) 
   averageViewDurationSeconds: number; // En secondes
   totalSubscribersGained: number;

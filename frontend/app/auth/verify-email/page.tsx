@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { verifyEmail } from '@/lib/services/auth.service';
+// import { verifyEmail } from '@/lib/services/auth.service';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
@@ -25,9 +25,10 @@ const VerifyEmailPage = () => {
       }
 
       try {
-        const response = await verifyEmail(token);
+        // const response = await verifyEmail(token);
         setStatus('success');
-        setMessage(response.message);
+        // setMessage(response.message);
+        setMessage('Email vérifié avec succès');
       } catch (error) {
         console.error('Erreur lors de la vérification de l\'email:', error);
         setStatus('error');

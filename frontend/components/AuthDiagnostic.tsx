@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { authenticatedAxios } from '../lib/axios/authenticatedAxios';
+import authenticatedAxios from '../lib/axios/authenticatedAxios';
 
 /**
  * Composant pour diagnostiquer les problèmes d'authentification JWT
@@ -42,8 +42,8 @@ export const AuthDiagnostic = () => {
     // Aussi vérifier s'il y a un token sous l'ancienne clé
     const oldToken = localStorage.getItem('token');
     if (oldToken) {
-      tokenObj.oldTokenPresent = true;
-      tokenObj.oldTokenPreview = oldToken.substring(0, 15) + '...';
+      // tokenObj.oldTokenPresent = true;
+      // tokenObj.oldTokenPreview = oldToken.substring(0, 15) + '...';
     }
     
     setJwtTestResults(prev => ({
@@ -66,7 +66,7 @@ export const AuthDiagnostic = () => {
       
       setJwtTestResults(prev => ({
         ...prev,
-        corsTest: `Succès (${response.status}): ${response.data.message}`
+        corsTest: `Succès (${response.status}): ${response.data && typeof response.data === 'object' && 'message' in response.data ? response.data.message : 'Pas de message spécifique'}`
       }));
       return true;
     } catch (error: any) {
@@ -92,14 +92,19 @@ export const AuthDiagnostic = () => {
       
       setJwtTestResults(prev => ({
         ...prev,
-        jwtTest: `Succès (${response.status}): ${response.data.message}`
+        jwtTest: `Succès (${response.status}): ${response.data && typeof response.data === 'object' && 'message' in response.data ? response.data.message : 'Pas de message spécifique'}`
       }));
       return true;
     } catch (error: any) {
       console.error('[DIAG-3] Erreur test JWT:', error);
-      const errorDetails = error.response 
-        ? `Status: ${error.response.status}, Message: ${JSON.stringify(error.response.data)}` 
-        : error.message || 'Erreur inconnue';
+      let errorDetails = 'Erreur inconnue';
+      if (error && typeof error === 'object') {
+        if (error.response && typeof error.response === 'object') {
+          errorDetails = `Status: ${error.response.status || 'inconnu'}, Message: ${error.response.data ? JSON.stringify(error.response.data) : 'aucune donnée'}`; 
+        } else if ('message' in error && error.message) {
+          errorDetails = String(error.message);
+        }
+      }
         
       setJwtTestResults(prev => ({
         ...prev,

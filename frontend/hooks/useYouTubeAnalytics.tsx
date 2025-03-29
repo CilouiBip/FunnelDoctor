@@ -57,9 +57,9 @@ const useYouTubeAnalytics = (videos: YouTubeVideo[] = []): YouTubeAggregatedMetr
       const likes = video.stats?.likeCount || 0;
       const comments = video.stats?.commentCount || 0;
 
-      totalViews += views;
-      totalLikes += likes;
-      totalComments += comments;
+      totalViews += Number(views);
+      totalLikes += Number(likes);
+      totalComments += Number(comments);
 
       if (video.analytics) {
         videoCountWithAnalytics++;
@@ -74,10 +74,10 @@ const useYouTubeAnalytics = (videos: YouTubeVideo[] = []): YouTubeAggregatedMetr
         const avgDuration = analytics.averageViewDuration || 0;
         const avgPercentage = analytics.averageViewPercentage || 0;
 
-        if (views > 0) {
-           totalViewDurationSeconds += avgDuration * views;
-           totalWeightedViewPercentage += avgPercentage * views;
-           totalViewPercentageWeight += views;
+        if (Number(views) > 0) {
+           totalViewDurationSeconds += Number(avgDuration) * Number(views);
+           totalWeightedViewPercentage += Number(avgPercentage) * Number(views);
+           totalViewPercentageWeight += Number(views);
         }
       }
     });

@@ -93,11 +93,11 @@ export const fetchVideos = async (
     // Vérifier la structure exacte de la réponse
     if (response.data) {
       console.log('[FRONTEND-FETCH] Structure de la réponse:', {
-        hasItems: !!response.data.items,
-        itemsLength: response.data.items?.length,
-        hasData: !!response.data.data,
-        hasVideos: !!response.data.videos,
-        keys: Object.keys(response.data)
+        hasItems: response.data && typeof response.data === 'object' && 'items' in response.data ? !!response.data.items : false,
+        itemsLength: response.data && typeof response.data === 'object' && 'items' in response.data && Array.isArray(response.data.items) ? response.data.items.length : undefined,
+        hasData: response.data && typeof response.data === 'object' && 'data' in response.data ? !!response.data.data : false,
+        hasVideos: response.data && typeof response.data === 'object' && 'videos' in response.data ? !!response.data.videos : false,
+        keys: response.data && typeof response.data === 'object' ? Object.keys(response.data) : []
       });
     }
     
@@ -195,7 +195,7 @@ export const fetchAggregatedKPIs = async (period: 'last7' | 'last28' | 'last30' 
     }
     
     console.log(`[KPIS] Données reçues pour ${response.data.data.totalVideos} vidéos sur ${period}`);
-    return response.data.data;
+    return response.data.data.data;
   } catch (error) {
     console.error(`[KPIS] Erreur lors de la récupération des KPIs agrégés:`, error);
     throw error;

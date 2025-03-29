@@ -145,20 +145,20 @@ export interface VideoListResponse {
  */
 export interface AggregatedVideoKPIsDTO {
   // Propriétés basées sur ce que renvoie l'API backend
-  totalVideosConsidered: number;
-  totalVideosAnalysed: number;
+  totalVideosConsidered?: number;
+  totalVideosAnalysed?: number;
   period: { startDate: string; endDate: string; days?: number };
   totalViews: number;
-  averageRetentionPercentage: number;
-  averageViewDurationSeconds: number;
+  averageRetentionPercentage?: number;
+  averageViewDurationSeconds?: number;
   totalSubscribersGained: number;
-  totalShares: number;
+  totalShares?: number;
   totalLikes: number;
   totalComments: number; // Ajouté pour le calcul de l'engagement rate
-  averageCardCTR: number;
-  totalCardClicks: number;
-  totalCardImpressions: number;
-  totalWatchTimeMinutes: number;
+  averageCardCTR?: number;
+  totalCardClicks?: number;
+  totalCardImpressions?: number;
+  totalWatchTimeMinutes?: number;
   // Garder les anciens noms comme optionnels pour compatibilité
   totalVideos?: number;
   avgViewPercentage?: number;

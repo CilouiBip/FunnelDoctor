@@ -34,8 +34,8 @@ export const useYouTubeAuth = () => {
       
       // Vérifier la connexion YouTube uniquement si le diagnostic est bon
       const connectionStatus = await checkYouTubeConnection();
-      setIsConnected(connectionStatus.connected);
-      return connectionStatus.connected;
+      setIsConnected(connectionStatus);
+      return connectionStatus;
     } catch (error) {
       console.error('Erreur lors de la vérification de la connexion YouTube:', error);
       setIsConnected(false);

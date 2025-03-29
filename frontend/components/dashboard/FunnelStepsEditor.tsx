@@ -53,8 +53,18 @@ export const FunnelStepsEditor: React.FC = () => {
   const router = useRouter();
 
   // Source des données (API authentifiée ou debug) avec persistance locale
-  const [dataSource, setDataSource] = useState<'auth'|'debug'>(() => {
-    // Vérification du statut d'authentification au démarrage
+  // Utiliser une valeur par défaut sûre (auth) pour l'initialisation côté serveur
+  const [dataSource, setDataSource] = useState<'auth'|'debug'>('auth');
+  
+  // État pour indiquer si nous sommes côté client
+  const [isClientSide, setIsClientSide] = useState(false);
+  
+  // useEffect pour initialiser les données côté client uniquement
+  useEffect(() => {
+    // Marquer que nous sommes côté client
+    setIsClientSide(true);
+    
+    // Vérification du statut d'authentification au démarrage (côté client uniquement)
     const isUserAuthenticated = isAuthenticated();
     const tokenInfo = getTokenInfo();
     
@@ -79,20 +89,20 @@ export const FunnelStepsEditor: React.FC = () => {
       }, 1000);
     }
     
-    // Récupérer la source de données du localStorage
+    // Récupérer la source de données du localStorage (côté client uniquement)
     const savedSource = localStorage.getItem('funnel_data_source');
     
-    // Si authentifié et pas explicitement en debug, forcer 'auth'
+    // Initialiser dataSource en fonction de l'authentification et des préférences sauvegardées
     if (isUserAuthenticated && savedSource !== 'debug') {
       console.log('FunnelStepsEditor: Utilisateur authentifié, utilisation du mode AUTH');
-      return 'auth';
+      setDataSource('auth');
     } else if (isUserAuthenticated && savedSource === 'debug') {
       console.log('FunnelStepsEditor: Source précédente en DEBUG mais utilisateur authentifié, tentative de AUTH');
-      return 'auth';
+      setDataSource('auth');
+    } else {
+      setDataSource(savedSource === 'debug' ? 'debug' : 'auth');
     }
-    
-    return (savedSource === 'debug') ? 'debug' : 'auth';
-  });
+  }, []);
   
   // Compteur de tentatives d'authentification échouées
   const [authAttempts, setAuthAttempts] = useState<number>(0);
@@ -105,19 +115,22 @@ export const FunnelStepsEditor: React.FC = () => {
     timestamp?: string;
   } | null>(null);
   
-  // Persister le dataSource dans localStorage quand il change
+  // Persister le dataSource dans localStorage quand il change (uniquement côté client)
   useEffect(() => {
-    localStorage.setItem('funnel_data_source', dataSource);
-    console.log(`FunnelStepsEditor: Source de données modifiée -> ${dataSource}`);
-    
-    // Toujours vérifier le statut d'authentification quand la source change
-    const tokenInfo = getTokenInfo();
-    console.log(`FunnelStepsEditor: Vérification token après changement de source:`, {
-      présent: !!tokenInfo.token,
-      valide: tokenInfo.isValid,
-      expiration: tokenInfo.expiration?.toLocaleString() || 'N/A',
-      userId: tokenInfo.userId || 'N/A'
-    });
+    // Vérifier que nous sommes côté client avant d'accéder à localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('funnel_data_source', dataSource);
+      console.log(`FunnelStepsEditor: Source de données modifiée -> ${dataSource}`);
+      
+      // Toujours vérifier le statut d'authentification quand la source change
+      const tokenInfo = getTokenInfo();
+      console.log(`FunnelStepsEditor: Vérification token après changement de source:`, {
+        présent: !!tokenInfo.token,
+        valide: tokenInfo.isValid,
+        expiration: tokenInfo.expiration?.toLocaleString() || 'N/A',
+        userId: tokenInfo.userId || 'N/A'
+      });
+    }
   }, [dataSource]);
   
   // Création d'une fonction pour gérer l'expiration du token et proposer la reconnexion
@@ -143,6 +156,12 @@ export const FunnelStepsEditor: React.FC = () => {
 
   // Déclaration de la fonction fetchSteps pour la rendre accessible à d'autres fonctions
   const fetchSteps = async () => {
+    // Ne rien faire si nous ne sommes pas côté client
+    if (typeof window === 'undefined') {
+      console.log('FunnelStepsEditor: fetchSteps appelé côté serveur, ignoré');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     
@@ -156,6 +175,7 @@ export const FunnelStepsEditor: React.FC = () => {
     }
     
     try {
+      // Obtenir les informations du token côté client uniquement
       const tokenInfo = getTokenInfo();
       console.log('FunnelStepsEditor: Tentative de récupération des étapes du funnel');
       console.log(`FunnelStepsEditor: Source=${dataSource}, Tentative=${authAttempts}, Token présent=${!!tokenInfo.token}, Token valide=${tokenInfo.isValid}`);
@@ -299,15 +319,23 @@ export const FunnelStepsEditor: React.FC = () => {
   };
 
   // Charger les étapes depuis l'API au chargement initial et quand dataSource change
+  // N'exécute fetchSteps que lorsque nous sommes côté client et après que dataSource est initialisé
   useEffect(() => {
+    // Ne rien faire si nous ne sommes pas côté client
+    if (typeof window === 'undefined') {
+      console.log('FunnelStepsEditor: Chargement initial côté serveur, ignoré');
+      return;
+    }
+    
     // Vérifier si c'est le premier chargement ou un changement de source de données
+    console.log('FunnelStepsEditor: Déclenchement du chargement des étapes (côté client)');
     fetchSteps();
     
     // Nettoyer tout useEffect précédent (en cas de changement rapide de dataSource)
     return () => {
       console.log('FunnelStepsEditor: Nettoyage de l\'effet précédent');
     };
-  }, [dataSource]); // Dépend de dataSource pour éviter la boucle infinie
+  }, [dataSource, isClientSide]); // Dépend de dataSource et isClientSide
 
   // Fonctions pour gérer les actions
   const handleAddStep = async () => {
