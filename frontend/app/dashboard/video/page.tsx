@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   fetchVideos, 
   checkYouTubeConnection, 
@@ -22,6 +22,7 @@ export default function VideoPerformancePage() {
   const [pageToken, setPageToken] = useState('');
   const [isConnected, setIsConnected] = useState(false);
 
+  // MODIFICATION: Changer le type pour accepter null et initialiser à null
   const [aggregatedKPIs, setAggregatedKPIs] = useState<AggregatedVideoKPIsDTO | null>(null);
   const [kpiLoading, setKpiLoading] = useState(false); 
   const [kpiError, setKpiError] = useState<string | null>(null); 
@@ -69,31 +70,36 @@ export default function VideoPerformancePage() {
     }
   };
 
-  const loadAggregatedKPIs = async (periodToLoad = selectedPeriod) => {
+  // Fonction pour charger les KPIs agrégés
+  const loadAggregatedKPIs = useCallback(async (period: 'last7' | 'last28' | 'last30' | 'last90' = 'last28') => {
+    setKpiLoading(true);
+    setKpiError(null);
     try {
-      setKpiLoading(true);
-      setKpiError(null);
-      console.log(`[loadAggregatedKPIs] Chargement - Période: ${periodToLoad}`);
+      // Appel au service qui retourne maintenant directement les KPIs ou null
+      const kpiData = await fetchAggregatedKPIs(period);
 
-      const response = await fetchAggregatedKPIs(periodToLoad as 'last7' | 'last28' | 'last30' | 'last90');
+      // Log de la valeur directe retournée par fetchAggregatedKPIs
+      console.log('[DIAG-KPI] Données KPI retournées par fetchAggregatedKPIs:', JSON.stringify(kpiData, null, 2));
 
-      console.log('[loadAggregatedKPIs] Réponse API BRUTE pour /summary:', response);
-
-      if (response.success && response.data) {
-        setAggregatedKPIs(response.data);
-        console.log(`[loadAggregatedKPIs] KPIs agrégés mis à jour pour ${periodToLoad}:`, response.data);
+      if (kpiData) {
+        // Utiliser directement kpiData pour mettre à jour l'état
+        setAggregatedKPIs(kpiData);
+        console.log('[DIAG-KPI] KPIs mis à jour dans l\'état avec:', kpiData);
       } else {
-        throw new Error(response.message || 'Impossible de charger les KPIs agrégés.');
+        console.error('[DIAG-KPI] Aucune donnée KPI reçue ou structure invalide.');
+        setKpiError('Impossible de charger les KPIs agrégés.');
+        // MODIFICATION: Réinitialiser avec null au lieu de {}
+        setAggregatedKPIs(null);
       }
-
-    } catch (err: any) {
-      console.error('[ERREUR] Impossible de charger les KPIs agrégés:', err);
-      setKpiError(err.response?.data?.message || err.message || 'Impossible de charger les KPIs agrégés.');
-      setAggregatedKPIs(null); 
+    } catch (error: any) {
+      console.error('Erreur lors du chargement des KPIs agrégés:', error);
+      setKpiError(error.message || 'Une erreur est survenue.');
+      // MODIFICATION: Réinitialiser avec null au lieu de {}
+      setAggregatedKPIs(null);
     } finally {
       setKpiLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (initializationRef.current) return;
@@ -112,7 +118,7 @@ export default function VideoPerformancePage() {
                  console.log("[DEBUG] Connecté. Chargement initial données (vidéos + KPIs) période par défaut:", selectedPeriod);
                  await Promise.all([
                    loadVideos(selectedPeriod),
-                   loadAggregatedKPIs(selectedPeriod)
+                   loadAggregatedKPIs(selectedPeriod as 'last7' | 'last28' | 'last30' | 'last90')
                  ]);
              } else {
                  console.log("[DEBUG] Non connecté.");
@@ -132,7 +138,7 @@ export default function VideoPerformancePage() {
 
       console.log(`[Period Change Effect] Déclenchement pour période: ${selectedPeriod}`);
       loadVideos(selectedPeriod);
-      loadAggregatedKPIs(selectedPeriod);
+      loadAggregatedKPIs(selectedPeriod as 'last7' | 'last28' | 'last30' | 'last90');
 
    }, [selectedPeriod, isConnected]); 
 
@@ -144,6 +150,15 @@ export default function VideoPerformancePage() {
 
   console.log(`[PAGE.TSX BEFORE RENDER][Period: ${selectedPeriod}] State 'videos' going to render. First video retention: ${videos[0]?.analytics?.averageViewPercentage}`);
   console.log(`[PAGE.TSX BEFORE RENDER][Period: ${selectedPeriod}] Backend Aggregated KPIs going to render:`, aggregatedKPIs);
+  console.log('[DIAG-KPI] Rendu - Valeur de aggregatedKPIs AVANT rendu JSX:', aggregatedKPIs);
+  console.log('[DIAG-KPI] Rendu - kpiLoading:', kpiLoading, 'kpiError:', kpiError);
+
+  // Gestionnaire pour le changement de période
+  const handlePeriodChange = (value: string) => {
+    setSelectedPeriod(value);
+    // MODIFICATION: Caster la valeur en type attendu
+    loadAggregatedKPIs(value as 'last7' | 'last28' | 'last30' | 'last90');
+  };
 
   return (
     <div className="py-4 px-1">
@@ -160,7 +175,7 @@ export default function VideoPerformancePage() {
                 <select
                   id="periodSelect"
                   value={selectedPeriod}
-                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  onChange={(e) => handlePeriodChange(e.target.value)}
                   className="form-select rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                   disabled={loading} 
                 >
@@ -190,14 +205,50 @@ export default function VideoPerformancePage() {
             </div>
           ) : aggregatedKPIs ? ( 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-              <StatCard title="Total Views" value={formatNumber(aggregatedKPIs.totalViews ?? 0)} icon={<></>} tooltip={`Total views for the selected period (${aggregatedKPIs.period.days} days)`} />
-              <StatCard title="Avg. Retention %" value={`${(aggregatedKPIs.averageRetentionPercentage ?? 0).toFixed(1)}%`} icon={<></>} tooltip="Average percentage of videos watched" />
-              <StatCard title="Cards CTR" value={`${((aggregatedKPIs.averageCardCTR ?? 0) * 100).toFixed(2)}%`} icon={<></>} tooltip="Average click-through rate for cards shown" />
-              <StatCard title="Subscribers Gained" value={`+${formatNumber(aggregatedKPIs.totalSubscribersGained ?? 0)}`} icon={<></>} tooltip="Subscribers gained during the period" />
-              <StatCard title="Shares" value={formatNumber(aggregatedKPIs.totalShares ?? 0)} icon={<></>} tooltip="Total shares during the period" />
-              <StatCard title="Avg Engagement Rate" value={`${((aggregatedKPIs.avgEngagementRate ?? 0) * 100).toFixed(2)}%`} icon={<></>} tooltip="(Likes + Comments + Shares) / Views" />
-              <StatCard title="Avg Retention Time" value={formatDuration(aggregatedKPIs.averageViewDurationSeconds ?? 0)} icon={<></>} tooltip="Average duration viewers watched" />
-              <StatCard title="Total Likes" value={formatNumber(aggregatedKPIs.totalLikes ?? 0)} icon={<></>} tooltip="Total likes during the period" />
+              <StatCard
+                title="Total Views"
+                value={formatNumber(aggregatedKPIs.totalViews)} 
+                tooltip={`Période: ${aggregatedKPIs.period?.startDate} - ${aggregatedKPIs.period?.endDate} (${aggregatedKPIs.period?.days}j) | Vidéos analysées: ${aggregatedKPIs.totalVideosAnalysed}`}
+              />
+              <StatCard
+                title="Avg Retention"
+                value={`${formatNumber(aggregatedKPIs.averageRetentionPercentage)}%`}
+                tooltip="Average percentage of each video watched by viewers."
+              />
+              <StatCard
+                title="Avg Card CTR"
+                value={`${formatNumber(aggregatedKPIs.averageCardCTR)}%`}
+                tooltip={`Clicks: ${formatNumber(aggregatedKPIs.totalCardClicks)} / Impressions: ${formatNumber(aggregatedKPIs.totalCardImpressions)}`}
+              />
+              <StatCard
+                title="Avg View Duration"
+                value={formatDuration(aggregatedKPIs.averageViewDurationSeconds)}
+                tooltip="Average length of time viewers watched the videos."
+              />
+              <StatCard
+                title="Subscribers Gained"
+                value={`+${formatNumber(aggregatedKPIs.totalSubscribersGained)}`}
+                icon={<></>}
+                tooltip="Subscribers gained during the period"
+              />
+              <StatCard
+                title="Shares"
+                value={formatNumber(aggregatedKPIs.totalShares)}
+                icon={<></>}
+                tooltip="Total shares during the period"
+              />
+              <StatCard
+                title="Avg Engagement Rate"
+                value={`${(((aggregatedKPIs.totalLikes || 0) + (aggregatedKPIs.totalComments || 0) + (aggregatedKPIs.totalShares || 0)) / (aggregatedKPIs.totalViews || 1) * 100).toFixed(2)}%`}
+                icon={<></>}
+                tooltip="(Likes + Comments + Shares) / Views"
+              />
+              <StatCard
+                title="Total Likes"
+                value={formatNumber(aggregatedKPIs.totalLikes)}
+                icon={<></>}
+                tooltip="Total likes during the period"
+              />
 
             </div>
           ) : null /* Ne pas afficher les KPIs si erreur ou pas de données */}

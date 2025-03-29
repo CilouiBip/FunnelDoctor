@@ -367,20 +367,40 @@ export class YouTubeAnalyticsService {
   /**
    * Récupère les statistiques détaillées pour une vidéo spécifique sur une période donnée.
    * Utilise les API YouTube Data et YouTube Analytics.
+   * @param userId ID de l'utilisateur
+   * @param videoId ID de la vidéo à analyser
+   * @param period Période d'analyse (ex: 'last28')
+   * @param preloadedConfig Configuration préchargée (optionnelle) pour éviter les appels redondants
    */
-  async getVideoDetailedAnalytics(userId: string, videoId: string, period: string): Promise<VideoDetailedAnalyticsDTO> {
+  async getVideoDetailedAnalytics(
+    userId: string, 
+    videoId: string, 
+    period: string,
+    preloadedConfig?: { accessToken: string; channelId: string; }
+  ): Promise<VideoDetailedAnalyticsDTO> {
     const logPrefix = `[YouTubeAnalyticsService][getVideoDetailedAnalytics] Video ID: ${videoId} Period: ${period}`; // Préfixe pour les logs
 
     this.logger.debug(`${logPrefix} Début de la récupération des données.`);
 
-    // 1. Obtenir le token et channelId
-    const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
-    if (!config || !config.access_token || !config.youtube_channel_id) {
-      this.logger.error(`${logPrefix} Configuration YouTube invalide ou manquante.`);
-      throw new Error('Configuration YouTube invalide ou manquante.');
+    // 1. Obtenir le token et channelId (ou utiliser ceux préchargés)
+    let accessToken: string;
+    let channelId: string;
+    
+    if (preloadedConfig && preloadedConfig.accessToken && preloadedConfig.channelId) {
+      // Utiliser la configuration préchargée (évite les appels redondants)
+      accessToken = preloadedConfig.accessToken;
+      channelId = preloadedConfig.channelId;
+      this.logger.debug(`${logPrefix} Utilisation de la configuration préchargée.`);
+    } else {
+      // Charger la configuration depuis le service
+      const config = await this.youtubeAuthService.getIntegrationConfig(userId, 'youtube');
+      if (!config || !config.access_token || !config.youtube_channel_id) {
+        this.logger.error(`${logPrefix} Configuration YouTube invalide ou manquante.`);
+        throw new Error('Configuration YouTube invalide ou manquante.');
+      }
+      accessToken = config.access_token;
+      channelId = config.youtube_channel_id;
     }
-    const accessToken = config.access_token;
-    const channelId = config.youtube_channel_id;
 
     // 2. Préparer les requêtes API Analytics
     const { formattedStartDate, endDate } = this.calculatePeriodDates(period); // Calculate dates from period string
@@ -513,6 +533,12 @@ export class YouTubeAnalyticsService {
     const logPrefix = `[AggregatedKPIs][User:${userId}][Period:${period}]`;
     this.logger.log(`${logPrefix} Starting KPI aggregation.`);
 
+    // Configuration pour la robustesse des appels API
+    const MAX_RETRIES = 3;                // Nombre maximal de tentatives par vidu00e9o
+    const BATCH_SIZE = 5;                 // Nombre maximal d'appels API paralli00e8les
+    const RETRY_DELAY_BASE = 1000;        // Du00e9lai de base entre les tentatives (en ms)
+    const TOKEN_BUFFER_SECONDS = 300;     // 5 minutes de marge pour le token refresh
+    
     const { formattedStartDate, endDate } = this.calculatePeriodDates(period);
     
     try {
@@ -523,10 +549,11 @@ export class YouTubeAnalyticsService {
         throw new Error('YouTube integration configuration not found.');
       }
       
-      // 2. Vérifier l'expiration et rafraîchir si nécessaire
+      // 2. Vérifier l'expiration et SYSTÉMATIQUEMENT rafraîchir le token avec une marge de sécurité importante
+      // pour éviter les expirations pendant les appels en batch
       const nowSeconds = Math.floor(Date.now() / 1000);
-      const bufferSeconds = 60; // Refresh if token expires within 60 seconds
-      if (config.expires_at && config.expires_at <= nowSeconds + bufferSeconds) {
+      const bufferSeconds = 300; // 5 minutes de marge pour éviter expiration pendant les multiples appels API
+      if (!config.expires_at || config.expires_at <= nowSeconds + bufferSeconds) {
         this.logger.log(`${logPrefix} Token expired or expiring soon. Attempting refresh...`);
         const refreshed = await this.youtubeAuthService.refreshAccessToken(userId);
         if (!refreshed) {
@@ -539,11 +566,17 @@ export class YouTubeAnalyticsService {
           this.logger.error(`${logPrefix} Failed to get config after token refresh.`);
           throw new Error('Failed to retrieve configuration after token refresh.');
         }
-        this.logger.log(`${logPrefix} Token refreshed successfully.`);
+        // Calculer et logger le temps restant avant expiration du nouveau token
+        const minutesRemaining = config.expires_at ? Math.round((config.expires_at - nowSeconds) / 60) : 'unknown';
+        this.logger.log(`${logPrefix} Token refreshed successfully. Expires in: ${minutesRemaining} minutes`);
       }
 
-      // Proceed with the valid access token
+      // Proceed with the valid access token and prepare shared config for all calls
       const accessToken = config.access_token;
+      const preloadedConfig = {
+        accessToken: config.access_token,
+        channelId: config.youtube_channel_id,
+      };
       
       // 3. Créer un client OAuth2 et l'API YouTube
       const oauth2Client = new google.auth.OAuth2();
@@ -623,23 +656,92 @@ export class YouTubeAnalyticsService {
 
       if (publicVideoIds.length > 0) {
         this.logger.log(`${logPrefix} Fetching detailed analytics for ${publicVideoIds.length} videos...`);
-        const analyticsPromises = publicVideoIds.map(videoId => 
-          this.getVideoDetailedAnalytics(userId, videoId, period) // Pass the original period string
-        );
+        this.logger.log(`${logPrefix} Using optimized approach: batch size ${BATCH_SIZE}, max retries ${MAX_RETRIES}, token valid for at least ${TOKEN_BUFFER_SECONDS/60} minutes`);
+        
+        // Helper pour implanter un délai entre tentatives (exponential backoff)
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        
+        // Helper function pour récupérer les analytics d'une vidéo avec retry
+        const fetchWithRetry = async (videoId: string, retryCount = 0): Promise<VideoDetailedAnalyticsDTO | null> => {
+          try {
+            // Utiliser la configuration préchargée pour tous les appels
+            return await this.getVideoDetailedAnalytics(userId, videoId, period, preloadedConfig);
+          } catch (error) {
+            // Déterminer si l'erreur est temporaire ou permanente
+            const isTemporaryError = (err: any): boolean => {
+              // Vérifier si c'est une erreur de réseau
+              if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET') {
+                return true;
+              }
 
-        const results = await Promise.allSettled(analyticsPromises);
+              // Vérifier le statut HTTP si c'est une erreur Axios
+              if (err.response && err.response.status) {
+                const status = err.response.status;
+                // 429: Too Many Requests (rate limiting)
+                // 5xx: Server errors (temporaires)
+                return status === 429 || (status >= 500 && status < 600);
+              }
 
-        results.forEach((result, index) => {
-          if (result.status === 'fulfilled' && result.value) {
-            detailedAnalyticsResults.push(result.value);
-            successCount++;
-          } else {
-            failureCount++;
-            // Correctly access reason only on rejected promises
-            const reason = result.status === 'rejected' ? result.reason : 'Unknown reason';
-            this.logger.warn(`${logPrefix} Failed to fetch analytics for video ID: ${publicVideoIds[index]}. Reason: ${reason}`);
+              // Pour les erreurs d'authentification/autorisation, considérer comme permanentes
+              if (err.response && err.response.status) {
+                const status = err.response.status;
+                if (status === 401 || status === 403 || status === 404) {
+                  return false;
+                }
+              }
+
+              // Par défaut, considérer les erreurs inconnues comme temporaires
+              // mais avec un log supplémentaire pour alerter
+              this.logger.warn(`${logPrefix} Erreur de type inconnu pour la vidéo ${videoId}: ${err.message}. Traitée comme temporaire.`);
+              return true;
+            };
+
+            const errorIsTemporary = isTemporaryError(error);
+
+            // Si l'erreur est permanente, ne pas retenter
+            if (!errorIsTemporary) {
+              this.logger.error(`${logPrefix} Erreur permanente pour la vidéo ${videoId}, pas de retry: ${error.message}`);
+              // Si disponible, log des détails supplémentaires de l'erreur
+              if (error.response?.data?.error?.message) {
+                this.logger.error(`${logPrefix} Détails de l'erreur API: ${error.response.data.error.message}`);
+              }
+              return null;
+            }
+
+            // Sinon, pour les erreurs temporaires, retry si possible
+            if (retryCount < MAX_RETRIES) {
+              // Délai exponentiel entre les tentatives (1s, 2s, 4s, etc.)
+              const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount);
+              this.logger.warn(`${logPrefix} Retry ${retryCount + 1}/${MAX_RETRIES} for video ${videoId} after ${delay}ms. Error temporaire: ${error.message}`);
+              await sleep(delay);
+              return fetchWithRetry(videoId, retryCount + 1);
+            } else {
+              // Plus de tentatives possibles, logger l'échec final
+              this.logger.error(`${logPrefix} Failed to fetch analytics for video ${videoId} after ${MAX_RETRIES} attempts: ${error.message}`);
+              return null;
+            }
           }
-        });
+        };
+        
+        // Traiter les vidu00e9os par lots pour u00e9viter la surcharge de l'API
+        for (let i = 0; i < publicVideoIds.length; i += BATCH_SIZE) {
+          const batch = publicVideoIds.slice(i, i + BATCH_SIZE);
+          this.logger.debug(`${logPrefix} Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(publicVideoIds.length/BATCH_SIZE)} (${batch.length} videos)`);
+          
+          // Traiter ce lot en paralli00e8le avec retry
+          const batchResults = await Promise.all(batch.map(videoId => fetchWithRetry(videoId)));
+          
+          // Traiter les ru00e9sultats du lot
+          batchResults.forEach((result, index) => {
+            if (result) {
+              detailedAnalyticsResults.push(result);
+              successCount++;
+            } else {
+              failureCount++;
+              this.logger.warn(`${logPrefix} No data retrieved for video ID: ${batch[index]} after retries`);
+            }
+          });
+        }
 
         this.logger.log(`${logPrefix} Detailed analytics fetched. Success: ${successCount}, Failed: ${failureCount}.`);
       } else {
@@ -690,7 +792,9 @@ export class YouTubeAnalyticsService {
         if (views > 0) {
           // averageViewPercentage from API is 0-100
           if (analytics.averageViewPercentage !== undefined && analytics.averageViewPercentage !== null) {
-            totalWeightedRetentionSum += analytics.averageViewPercentage * views;
+            // Plafonner les valeurs de rétention à 100% pour éviter les valeurs aberrantes
+            const cappedRetentionPercentage = Math.min(analytics.averageViewPercentage, 100);
+            totalWeightedRetentionSum += cappedRetentionPercentage * views;
             totalViewsForRetention += views;
           }
           // averageViewDuration from API is in seconds
@@ -710,12 +814,14 @@ export class YouTubeAnalyticsService {
       const averageViewDurationSeconds = totalViewsForDuration > 0 
           ? totalWeightedDurationSum / totalViewsForDuration 
           : 0;
-      // DTO requires 0-1 for card CTR (API provides 0-1)
+      // API provides CTR as 0-1, mais les UIs YouTube l'affichent en pourcentage (0-100)
+      // Nous ne calculons plus averageCardCTR ici car nous le calculerons directement dans l'objet ru00e9sultat
+      // avec conversion en pourcentage
       const averageCardCTR = totalCardImpressions > 0 
           ? totalCardClicks / totalCardImpressions 
           : 0;
 
-      // 10. Construire le résultat final
+      // 10. Construire le résultat final avec TOUS les metrics agrégés
       const result: AggregatedVideoKPIsDTO = {
           totalVideosConsidered: publicVideoIds.length,
           totalVideosAnalysed: successCount,
@@ -725,8 +831,9 @@ export class YouTubeAnalyticsService {
           averageViewDurationSeconds: averageViewDurationSeconds,
           totalSubscribersGained: totalSubscribersGained,
           totalShares: totalShares,
-          // Note: Likes and Comments are not in AggregatedVideoKPIsDTO, but we have them
-          averageCardCTR: averageCardCTR, // Already 0-1
+          totalLikes: totalLikes, // Ajout des likes qui manquaient dans le retour
+          totalComments: totalComments, // Ajout des comments qui manquaient dans le retour
+          averageCardCTR: totalCardImpressions > 0 ? (totalCardClicks / totalCardImpressions) * 100 : 0, // Convertir en pourcentage (0-100) pour mieux correspondre aux attentes de YouTube Studio
           totalCardClicks: totalCardClicks,
           totalCardImpressions: totalCardImpressions,
           totalWatchTimeMinutes: totalWatchTimeMinutes,
@@ -762,7 +869,9 @@ export class YouTubeAnalyticsService {
       averageViewDurationSeconds: 0,
       totalSubscribersGained: 0,
       totalShares: 0,
-      averageCardCTR: 0, // Décimal
+      totalLikes: 0, // Ajout
+      totalComments: 0, // Ajout
+      averageCardCTR: 0, // Pourcentage (0-100)
       totalCardClicks: 0,
       totalCardImpressions: 0,
       totalWatchTimeMinutes: 0, 

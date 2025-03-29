@@ -138,3 +138,32 @@ export interface VideoListResponse {
   kind?: string;
   etag?: string;
 }
+
+/**
+ * Interface pour les KPIs agrégés des vidéos retournés par l'endpoint /summary
+ * Corrigée pour correspondre à la réponse réelle de l'API basée sur les erreurs de type.
+ */
+export interface AggregatedVideoKPIsDTO {
+  // Propriétés basées sur ce que renvoie l'API backend
+  totalVideosConsidered: number;
+  totalVideosAnalysed: number;
+  period: { startDate: string; endDate: string; days?: number };
+  totalViews: number;
+  averageRetentionPercentage: number;
+  averageViewDurationSeconds: number;
+  totalSubscribersGained: number;
+  totalShares: number;
+  totalLikes: number;
+  totalComments: number; // Ajouté pour le calcul de l'engagement rate
+  averageCardCTR: number;
+  totalCardClicks: number;
+  totalCardImpressions: number;
+  totalWatchTimeMinutes: number;
+  // Garder les anciens noms comme optionnels pour compatibilité
+  totalVideos?: number;
+  avgViewPercentage?: number;
+  avgViewDuration?: number;
+  cardClickRate?: number;
+  avgEngagementRate?: number;
+  formattedAvgDuration?: string;
+}
