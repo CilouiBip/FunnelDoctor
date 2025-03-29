@@ -212,12 +212,12 @@ export default function VideoPerformancePage() {
               />
               <StatCard
                 title="Avg Retention"
-                value={`${formatNumber(aggregatedKPIs.averageRetentionPercentage)}%`}
+                value={`${aggregatedKPIs.averageRetentionPercentage?.toFixed(2) ?? '0.00'}%`}
                 tooltip="Average percentage of each video watched by viewers."
               />
               <StatCard
                 title="Avg Card CTR"
-                value={`${formatNumber(aggregatedKPIs.averageCardCTR)}%`}
+                value={`${aggregatedKPIs.averageCardCTR?.toFixed(2) ?? '0.00'}%`}
                 tooltip={`Clicks: ${formatNumber(aggregatedKPIs.totalCardClicks)} / Impressions: ${formatNumber(aggregatedKPIs.totalCardImpressions)}`}
               />
               <StatCard
@@ -239,7 +239,7 @@ export default function VideoPerformancePage() {
               />
               <StatCard
                 title="Avg Engagement Rate"
-                value={`${(((aggregatedKPIs.totalLikes || 0) + (aggregatedKPIs.totalComments || 0) + (aggregatedKPIs.totalShares || 0)) / (aggregatedKPIs.totalViews || 1) * 100).toFixed(2)}%`}
+                value={`${(((aggregatedKPIs.totalLikes || 0) + (aggregatedKPIs.totalComments || 0) + (aggregatedKPIs.totalShares || 0)) / (aggregatedKPIs.totalViews || 1) * 100).toFixed(2) ?? '0.00'}%`}
                 icon={<></>}
                 tooltip="(Likes + Comments + Shares) / Views"
               />

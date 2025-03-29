@@ -27,7 +27,7 @@ const VideoTableRow: React.FC<VideoTableRowProps> = ({ video, onViewDetails, ind
             />
           </div>
           <div>
-            <span className="font-medium truncate max-w-xs">{video.title || 'Titre Manquant'}</span>
+            <span className="font-medium">{video.title || 'Titre Manquant'}</span>
             <span className="text-xs text-gray-500">ID: {video?.id || 'N/A'}</span>
           </div>
         </div>
@@ -114,11 +114,7 @@ const VideoTableRow: React.FC<VideoTableRowProps> = ({ video, onViewDetails, ind
         </div>
       </td>
 
-      {/* Actions */}
-      <td className="px-4 py-4 text-right">
-         {/* ... Bouton ... */}
-         <button onClick={() => onViewDetails && onViewDetails(video.id)} > {/* ... SVG ... */} </button>
-      </td>
+
     </tr>
   );
 };

@@ -22,7 +22,7 @@ export const Sidebar = () => {
 
   return (
     <aside className="sidebar">
-      <div className="p-6">
+      <div className="p-6 flex flex-col h-full">
         <div className="flex items-center mb-8">
           <div className="mr-2 w-8 h-8 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white font-bold">
             FD
@@ -30,7 +30,7 @@ export const Sidebar = () => {
           <span className="text-xl font-bold">Funnel<span className="accent">Doctor</span></span>
         </div>
         
-        <nav className="space-y-1">
+        <nav className="space-y-1 mt-auto">
           <Link 
             href="/dashboard" 
             className={`flex items-center px-4 py-3 rounded-lg ${isActive('/dashboard') ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-gray-100'} transition-colors`}
