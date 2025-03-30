@@ -3,6 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { catchError, firstValueFrom } from 'rxjs';
 import { CalendlyResourceDto } from './dto/webhook-event.dto';
+import { BridgingService } from '../bridging/bridging.service';
+import { TouchpointsService } from '../touchpoints/touchpoints.service';
+import { MasterLeadService } from '../leads/services/master-lead.service';
 
 @Injectable()
 export class CalendlyV2Service {
@@ -13,6 +16,9 @@ export class CalendlyV2Service {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly bridgingService: BridgingService,
+    private readonly touchpointsService: TouchpointsService,
+    private readonly masterLeadService: MasterLeadService,
   ) {
     const token = this.configService.get<string>('CALENDLY_PERSONAL_ACCESS_TOKEN');
     if (!token) {
@@ -111,39 +117,23 @@ export class CalendlyV2Service {
    * @returns Le visitor_id extrait ou null
    */
   extractVisitorIdFromResource(resource: any): string | null {
-    this.logger.log(`[extractVisitorId] Attempting to extract fd_tlid from tracking parameters`);
-    // Tentative de lecture via tracking_parameters (structure attendue par le DTO corrigé - mais on va simplifier l'accès)
-    // Calendly peut mettre les paramètres custom directement dans tracking ou dans tracking.tracking_parameters
-    const tlidFromParams = resource?.tracking?.tracking_parameters?.fd_tlid;
-    if (tlidFromParams) {
-      this.logger.log(`[extractVisitorId] Found in tracking_parameters.fd_tlid: ${tlidFromParams}`);
-      return String(tlidFromParams); // Assurer que c'est une string
+    this.logger.log(`[extractVisitorId] Attempting to extract visitor_id from utm_content`);
+    
+    // Priorité à utm_content dans tracking
+    const utmContent = resource?.tracking?.utm_content;
+    if (utmContent) {
+      this.logger.log(`[extractVisitorId] Found in tracking.utm_content: ${utmContent}`);
+      return String(utmContent); // Assurer que c'est une string
     }
   
-    // Tentative de lecture directe depuis resource.tracking (plus courant pour les UTMs passés en params)
-    const tlidDirect = resource?.tracking?.fd_tlid;
-     if (tlidDirect) {
-       this.logger.log(`[extractVisitorId] Found directly in tracking.fd_tlid: ${tlidDirect}`);
-       return String(tlidDirect); // Assurer que c'est une string
-     }
-  
-    // Dernière tentative : parfois les params sont à la racine de la ressource ? (Moins probable)
-    const tlidRoot = resource?.fd_tlid;
-     if (tlidRoot) {
-       this.logger.log(`[extractVisitorId] Found directly in resource.fd_tlid: ${tlidRoot}`);
-       return String(tlidRoot); // Assurer que c'est une string
-     }
-  
-  
-    this.logger.warn('[extractVisitorId] No fd_tlid found.');
-    // Optionnel : Tenter utm_medium en dernier recours SI et SEULEMENT SI utm_source == 'visitor_id' ?
-    // const utmSource = resource?.tracking?.utm_source;
-    // const utmMedium = resource?.tracking?.utm_medium;
-    // if (utmSource === 'visitor_id' && utmMedium) {
-    //    this.logger.log(`[extractVisitorId] Found fallback in utm_medium: ${utmMedium}`);
-    //    return String(utmMedium);
-    // }
-  
+    // Chercher aussi dans tracking_parameters pour plus de robustesse
+    const utmContentFromParams = resource?.tracking?.tracking_parameters?.utm_content;
+    if (utmContentFromParams) {
+      this.logger.log(`[extractVisitorId] Found in tracking_parameters.utm_content: ${utmContentFromParams}`);
+      return String(utmContentFromParams); // Assurer que c'est une string
+    }
+    
+    this.logger.warn('[extractVisitorId] No utm_content found in tracking parameters');
     return null; // Retourne null si non trouvé
   }//
     
@@ -248,9 +238,6 @@ export class CalendlyV2Service {
    */
   extractUserIdFromCalendlyEvent(resource: CalendlyResourceDto): string | null {
     try {
-      // NOTE: Cette implémentation est simplifiée et devrait être remplacée
-      // par une vraie table de mappage dans une application de production
-      
       // En v2, on peut extraire l'URI de l'utilisateur à partir de l'événement
       const ownerUri = resource.scheduled_event?.uri?.split('/scheduled_events/')[0];
       
@@ -259,21 +246,188 @@ export class CalendlyV2Service {
         // Format : https://api.calendly.com/users/XXXX
         const userId = ownerUri.split('/users/')[1];
         
-        // Si on a un ID, on le retourne, sinon on utilise un ID par défaut
         if (userId) {
           this.logger.log(`Extracted user ID from Calendly event: ${userId}`);
           return userId;
         }
       }
       
-      // ID utilisateur valide pour tests (utilisateur réel trouvé dans Supabase)
-      // NOTE: Ceci est une solution temporaire pour tester le bridging
-      const validTestUserId = 'a89ad1a0-1cb1-47a4-9a6c-e4934f2cd93c'; // ID utilisateur existant en Supabase (mehdi.benchaffi@gmail.com)
-      this.logger.warn(`Could not extract user ID from Calendly event, using valid test user ID: ${validTestUserId}`);
-      return validTestUserId;
+      this.logger.warn('Could not extract user ID from Calendly event');
+      return null; // Retourne null si l'ID ne peut pas être extrait
     } catch (error) {
       this.logger.error(`Error extracting user ID: ${error.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Traite l'événement de création d'un invité Calendly (v2)
+   * Cette méthode centralise la logique de traitement des webhooks invitee.created
+   * 
+   * @param resource Ressource de l'événement webhook
+   * @returns Résultat du traitement
+   */
+  async processInviteeCreatedEvent(resource: any): Promise<any> {
+    this.logger.log('Traitement de l\'événement invitee.created');
+
+    try {
+      // a. Extraire les données nécessaires
+      const email = resource.invitee?.email;
+      if (!email) {
+        this.logger.error('Email manquant dans la ressource invitee.created');
+        return { success: false, reason: 'missing_email' };
+      }
+      
+      // Extraire le visitor_id depuis utm_content
+      const visitorIdFromUtm = this.extractVisitorIdFromResource(resource);
+      this.logger.log(`Visitor ID extrait des UTM parameters: ${visitorIdFromUtm || 'non trouvé'}`);
+      
+      // Extraire l'ID utilisateur propriétaire du calendrier
+      const userId = this.extractUserIdFromCalendlyEvent(resource);
+      if (!userId) {
+        this.logger.error('Impossible de déterminer l\'utilisateur pour cet événement Calendly');
+        return { success: false, reason: 'unknown_user' };
+      }
+      
+      // b. Chercher un visitor_id associé à cet email dans bridge_associations
+      const visitorIdFromBridge = await this.bridgingService.findVisitorIdByEmail(email);
+      if (visitorIdFromBridge) {
+        this.logger.log(`Visitor ID trouvé via bridge_associations: ${visitorIdFromBridge}`);
+      }
+      
+      // c. Déterminer le visitor_id final à utiliser
+      const finalVisitorId = visitorIdFromUtm || visitorIdFromBridge || null;
+      this.logger.log(`Visitor ID final utilisé: ${finalVisitorId || 'non disponible'}`);
+      
+      // d. Trouver ou créer le master lead
+      const masterLead = await this.masterLeadService.findOrCreateMasterLead(
+        {
+          email: email,
+          visitor_id: finalVisitorId || undefined
+        },
+        userId,
+        'calendly'
+      );
+      
+      this.logger.log(`Master lead identifié/créé: ${masterLead.id}`);
+      
+      // e. Créer un touchpoint pour l'événement
+      const touchpointData = {
+        visitor_id: finalVisitorId || 'unknown',
+        event_type: 'rdv_scheduled',
+        master_lead_id: masterLead.id,
+        event_data: {
+          calendly_event_uri: resource.scheduled_event?.uri,
+          scheduled_time: resource.scheduled_event?.start_time,
+          invitee_email: email,
+          invitee_name: resource.invitee?.name,
+          event_name: resource.scheduled_event?.name,
+          event_id: resource.scheduled_event?.uuid,
+          master_lead_id: masterLead.id,
+          lead_id: masterLead.id // Pour compatibilité
+        },
+        page_url: resource.tracking?.utm_source ? `utm_source=${resource.tracking.utm_source}` : undefined
+      };
+      
+      const touchpoint = await this.touchpointsService.create(touchpointData);
+      this.logger.log(`Touchpoint créé avec succès: ${touchpoint.id}`);
+
+      return {
+        success: true,
+        masterLeadId: masterLead.id,
+        visitorId: finalVisitorId,
+        touchpointId: touchpoint.id,
+        scheduledEvent: resource.scheduled_event?.uri
+      };
+    } catch (error) {
+      this.logger.error(`Erreur lors du traitement invitee.created: ${error.message}`, error.stack);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Traite l'événement d'annulation d'un invité Calendly (v2)
+   * Cette méthode centralise la logique de traitement des webhooks invitee.canceled
+   * 
+   * @param resource Ressource de l'événement webhook
+   * @returns Résultat du traitement
+   */
+  async processInviteeCanceledEvent(resource: any): Promise<any> {
+    this.logger.log('Traitement de l\'événement invitee.canceled');
+
+    try {
+      // a. Extraire les données nécessaires
+      const email = resource.invitee?.email;
+      if (!email) {
+        this.logger.error('Email manquant dans la ressource invitee.canceled');
+        return { success: false, reason: 'missing_email' };
+      }
+      
+      // Extraire le visitor_id depuis utm_content
+      const visitorIdFromUtm = this.extractVisitorIdFromResource(resource);
+      this.logger.log(`Visitor ID extrait des UTM parameters: ${visitorIdFromUtm || 'non trouvé'}`);
+      
+      // Extraire l'ID utilisateur propriétaire du calendrier
+      const userId = this.extractUserIdFromCalendlyEvent(resource);
+      if (!userId) {
+        this.logger.error('Impossible de déterminer l\'utilisateur pour cet événement Calendly');
+        return { success: false, reason: 'unknown_user' };
+      }
+      
+      // Pour une annulation, on n'utilise pas le bridge car c'est un événement ultérieur 
+      // à la création du RDV, qui arrive potentiellement bien après
+      
+      // b. Trouver ou créer le master lead
+      const masterLead = await this.masterLeadService.findOrCreateMasterLead(
+        {
+          email: email,
+          visitor_id: visitorIdFromUtm || undefined
+        },
+        userId,
+        'calendly'
+      );
+      
+      this.logger.log(`Master lead identifié/créé pour annulation: ${masterLead.id}`);
+      
+      // Déterminer si c'est un report ou une annulation pure
+      const reason = resource.cancellation?.reason || '';
+      const rescheduled = reason.toLowerCase().includes('reschedul');
+      const eventType = rescheduled ? 'rdv_rescheduled' : 'rdv_canceled';
+      
+      // c. Créer un touchpoint pour l'événement d'annulation
+      const touchpointData = {
+        visitor_id: visitorIdFromUtm || 'unknown',
+        event_type: eventType,
+        master_lead_id: masterLead.id,
+        event_data: {
+          calendly_event_uri: resource.scheduled_event?.uri,
+          canceled_time: new Date().toISOString(),
+          scheduled_time: resource.scheduled_event?.start_time,
+          invitee_email: email,
+          invitee_name: resource.invitee?.name,
+          event_name: resource.scheduled_event?.name,
+          event_id: resource.scheduled_event?.uuid,
+          cancellation_reason: reason,
+          is_reschedule: rescheduled,
+          master_lead_id: masterLead.id
+        },
+        page_url: resource.tracking?.utm_source ? `utm_source=${resource.tracking.utm_source}` : undefined
+      };
+      
+      const touchpoint = await this.touchpointsService.create(touchpointData);
+      this.logger.log(`Touchpoint d'annulation créé: ${touchpoint.id}`);
+
+      return {
+        success: true,
+        masterLeadId: masterLead.id,
+        visitorId: visitorIdFromUtm,
+        touchpointId: touchpoint.id,
+        eventType: eventType,
+        scheduledEvent: resource.scheduled_event?.uri
+      };
+    } catch (error) {
+      this.logger.error(`Erreur lors du traitement invitee.canceled: ${error.message}`, error.stack);
+      return { success: false, error: error.message };
     }
   }
 }
