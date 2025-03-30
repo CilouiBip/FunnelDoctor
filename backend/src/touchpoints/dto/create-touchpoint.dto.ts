@@ -32,4 +32,8 @@ export class CreateTouchpointDto {
   @IsString()
   @IsOptional()
   referrer?: string;
+
+  @IsUUID(4)
+  @IsOptional()
+  master_lead_id?: string;
 }

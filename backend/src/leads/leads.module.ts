@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LeadsService } from './services/leads.service';
+import { MasterLeadService } from './services/master-lead.service';
 import { LeadsController } from './controllers/leads.controller';
 import { LeadContactsService } from './services/lead-contacts.service';
 import { LeadStatusService } from './services/lead-status.service';
@@ -17,13 +18,15 @@ import { SharedModule } from '../shared/shared.module';
     LeadsService, 
     LeadContactsService, 
     LeadStatusService, 
-    LeadStatusHistoryService
+    LeadStatusHistoryService,
+    MasterLeadService
   ],
   exports: [
     LeadsService, 
     LeadContactsService, 
     LeadStatusService, 
-    LeadStatusHistoryService
+    LeadStatusHistoryService,
+    MasterLeadService
   ]
 })
 export class LeadsModule {}
