@@ -7,6 +7,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EncryptionService } from './encryption/encryption.service';
 import { IntegrationService } from './integration.service';
+import { IntegrationsService } from './integrations.service';
+import { IntegrationsController } from './integrations.controller';
 import { YouTubeAuthService } from './youtube/youtube-auth.service';
 import { YouTubeController } from './youtube/youtube.controller';
 import { YouTubeTokenRefreshService } from './youtube/youtube-token-refresh.service';
