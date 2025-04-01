@@ -1,37 +1,55 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BridgingService } from '../bridging/bridging.service';
 import { ConfigService } from '@nestjs/config';
-import { FunnelProgressService } from '../funnel-progress/funnel-progress.service';
 import { TouchpointsService } from '../touchpoints/touchpoints.service';
 import { MasterLeadService } from '../leads/services/master-lead.service';
+import { IntegrationsService } from '../integrations/integrations.service';
 import Stripe from 'stripe';
 
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
-  private stripe: Stripe;
 
   constructor(
     private readonly bridgingService: BridgingService,
     private readonly configService: ConfigService,
-    private readonly funnelProgressService: FunnelProgressService,
     private readonly touchpointsService: TouchpointsService,
     private readonly masterLeadService: MasterLeadService,
+    private readonly integrationsService: IntegrationsService,
   ) {
-    // Initialiser Stripe avec la clé secrète
-    const stripeSecretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
-    if (!stripeSecretKey) {
-      this.logger.error('STRIPE_SECRET_KEY n\'est pas définie');
-    } else {
-      this.stripe = new Stripe(stripeSecretKey, {
-        apiVersion: '2024-12-18.acacia', // Version de l'API Stripe mise u00e0 jour
+    this.logger.log('PaymentsService initialisu00e9 - utilisation des clu00e9s API par utilisateur');
+  }
+
+  /**
+   * Initialise une instance Stripe avec la clu00e9 API secru00e8te de l'utilisateur
+   * @param userId ID de l'utilisateur pour ru00e9cupu00e9rer ses clu00e9s Stripe
+   * @returns Une instance Stripe configuru00e9e avec la clu00e9 secru00e8te de l'utilisateur
+   * @throws NotFoundException si l'intu00e9gration n'est pas configuru00e9e
+   */
+  private async getStripeInstance(userId: string): Promise<Stripe> {
+    try {
+      // Ru00e9cupu00e9rer la configuration Stripe pour cet utilisateur
+      const config = await this.integrationsService.getIntegrationConfig(userId, 'stripe');
+      
+      if (!config || !config.secret_key) {
+        this.logger.error(`Aucune clu00e9 API Stripe trouvu00e9e pour l'utilisateur ${userId}`);
+        throw new NotFoundException('Intu00e9gration Stripe non configuru00e9e pour cet utilisateur');
+      }
+      
+      // Cru00e9er une nouvelle instance Stripe avec la clu00e9 secru00e8te de l'utilisateur
+      return new Stripe(config.secret_key, {
+        apiVersion: '2024-12-18.acacia', // Version de l'API Stripe
       });
+    } catch (error) {
+      this.logger.error(`Erreur lors de l'initialisation de Stripe: ${error.message}`);
+      throw error;
     }
   }
 
   /**
-   * Crée une session de paiement Stripe Checkout
-   * @param data Données pour la création de la session
+   * Cru00e9e une session de paiement Stripe Checkout
+   * @param data Donnu00e9es pour la cru00e9ation de la session
+   * @param userId ID de l'utilisateur pour ru00e9cupu00e9rer ses clu00e9s Stripe
    * @returns URL de la session Stripe
    */
   async createCheckoutSession(data: {
@@ -41,19 +59,21 @@ export class PaymentsService {
     metadata?: Record<string, string>;
     customerEmail?: string;
     visitor_id?: string;
-  }) {
-    if (!this.stripe) {
-      throw new Error('Stripe n\'est pas configuré');
-    }
-
-    const { priceId, successUrl, cancelUrl, metadata, customerEmail, visitor_id } = data;
-    this.logger.log(
-      `Création session Stripe pour priceId=${priceId}, visitor_id=${visitor_id || 'non fourni'}, metadata=${JSON.stringify(metadata || {})}`
-    );
-
+  }, userId: string) {
     try {
-      // Créer la session Stripe
-      const session = await this.stripe.checkout.sessions.create({
+      // Initialiser Stripe avec la clu00e9 de l'utilisateur
+      const stripe = await this.getStripeInstance(userId);
+
+      const { priceId, successUrl, cancelUrl, metadata, customerEmail, visitor_id } = data;
+      this.logger.log(
+        `Cru00e9ation session Stripe pour priceId=${priceId}, visitor_id=${visitor_id || 'non fourni'}, metadata=${JSON.stringify(metadata || {})}`
+      );
+
+      // Cru00e9er la session avec les donnu00e9es fournies
+      const session = await stripe.checkout.sessions.create({
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        mode: 'payment',
         payment_method_types: ['card'],
         line_items: [
           {
@@ -61,186 +81,166 @@ export class PaymentsService {
             quantity: 1,
           },
         ],
-        mode: 'payment',
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        metadata: {
-          ...(metadata || {}),
-          ...(visitor_id ? { fd_visitor_id: visitor_id } : {})
-        },
         customer_email: customerEmail,
+        metadata: {
+          ...metadata,
+          fd_visitor_id: visitor_id || '',
+        },
       });
 
-      this.logger.log(`Session Stripe créée avec succès: ${session.id}`);
-
       return {
-        success: true,
-        url: session.url,
         sessionId: session.id,
+        url: session.url,
       };
     } catch (error) {
-      this.logger.error('Erreur lors de la création de la session Stripe', error);
+      this.logger.error(`Erreur lors de la cru00e9ation de la session Stripe: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Traite les événements webhook de Stripe
-   * @param payload Corps brut de la requête
-   * @param signature Signature de l'en-tête Stripe
-   * @returns Résultat du traitement
+   * Traite les u00e9vu00e9nements webhook de Stripe
+   * @param payload Corps brut de la requu00eate
+   * @param signature Signature de l'en-tu00eate Stripe
+   * @param userId ID de l'utilisateur pour ru00e9cupu00e9rer ses clu00e9s Stripe
+   * @returns Ru00e9sultat du traitement
    */
-  async handleWebhookEvent(payload: Buffer, signature: string, userId?: string) {
-    if (!this.stripe) {
-      throw new Error('Stripe n\'est pas configuré');
-    }
-
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
-    if (!webhookSecret) {
-      throw new Error('STRIPE_WEBHOOK_SECRET n\'est pas définie');
-    }
-
-    let event: Stripe.Event;
-
+  async handleWebhookEvent(payload: Buffer, signature: string, userId: string) {
     try {
-      // Vérifier la signature du webhook pour sécurité
-      event = this.stripe.webhooks.constructEvent(
-        payload,
-        signature,
-        webhookSecret
-      );
-    } catch (error) {
-      this.logger.error('Erreur de validation webhook Stripe', error);
-      throw new Error(`Webhook Error: ${error.message}`);
-    }
+      // Ru00e9cupu00e9rer la configuration Stripe pour cet utilisateur
+      const config = await this.integrationsService.getIntegrationConfig(userId, 'stripe');
+      
+      if (!config || !config.secret_key || !config.webhook_secret) {
+        this.logger.error(`Configuration Stripe incomplu00e8te pour l'utilisateur ${userId}`);
+        throw new NotFoundException('Configuration Stripe incomplu00e8te pour cet utilisateur');
+      }
+      
+      // Initialiser Stripe avec la clu00e9 de l'utilisateur
+      const stripe = await this.getStripeInstance(userId);
 
-    this.logger.log(`Événement webhook Stripe reçu: ${event.type}`);
+      // Construire l'u00e9vu00e9nement u00e0 partir du payload et de la signature
+      let event;
+      try {
+        event = stripe.webhooks.constructEvent(
+          payload,
+          signature,
+          config.webhook_secret
+        );
+      } catch (err) {
+        this.logger.error(`Webhook signature verification failed: ${err.message}`);
+        throw new Error(`Webhook signature verification failed: ${err.message}`);
+      }
 
-    try {
-      // Traiter différents types d'événements
-      switch (event.type) {
-        case 'checkout.session.completed': {
-          const session = event.data.object as Stripe.Checkout.Session;
-          await this.handleCompletedCheckout(session, userId);
-          break;
-        }
-        case 'payment_intent.succeeded': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          this.logger.log(`PaymentIntent réussi: ${paymentIntent.id}`);
-          break;
-        }
-        case 'payment_intent.payment_failed': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          this.logger.log(`Échec PaymentIntent: ${paymentIntent.id}`);
-          break;
-        }
-        default:
-          this.logger.log(`Événement non géré: ${event.type}`);
+      // Traiter l'u00e9vu00e9nement selon son type
+      this.logger.log(`Webhook event received: ${event.type}`);
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as Stripe.Checkout.Session;
+        return await this.handleCompletedCheckout(session, userId);
       }
 
       return { received: true, type: event.type };
     } catch (error) {
-      this.logger.error(`Erreur lors du traitement de l'événement ${event.type}`, error);
+      this.logger.error(`Erreur lors du traitement du webhook Stripe: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Gère une session de paiement complétée
-   * Implémente la logique de stitching entre visiteur et lead
-   * Crée un touchpoint de type payment_succeeded
-   * @param session Session Stripe complétée
+   * Gu00e8re une session de paiement complu00e9tu00e9e
+   * Implu00e9mente la logique de stitching entre visiteur et lead
+   * Cru00e9e un touchpoint de type payment_succeeded
+   * @param session Session Stripe complu00e9tu00e9e
    * @param userId ID de l'utilisateur (optionnel)
    */
-  private async handleCompletedCheckout(session: Stripe.Checkout.Session, userId?: string) {
-    this.logger.log(`Traitement session complétée: ${session.id}`);
-
-    // 1. Extraire l'email du client
+  async handleCompletedCheckout(session: Stripe.Checkout.Session, userId?: string) {
+    this.logger.log(`Traitement session complu00e9tu00e9e: ${session.id}`);
+    
+    // Extraire les donnu00e9es essentielles de la session
     const email = session.customer_email || session.customer_details?.email;
+    
+    // Une session sans email ne peut pas u00eatre traitu00e9e correctement
     if (!email) {
-      this.logger.error(`Session ${session.id} sans email client, impossible de traiter le paiement`);
-      return { success: false, reason: 'missing_email' };
+      this.logger.error('Session sans email, impossible de traiter la conversion');
+      return { success: false, error: 'Missing email' };
     }
-    this.logger.log(`Email client extrait: ${email}`);
     
-    // 2. Extraire le visitor_id des métadonnées (priorité à fd_visitor_id)
-    const visitorIdFromMetadata = session.metadata?.fd_visitor_id || session.metadata?.visitor_id;
-    if (visitorIdFromMetadata) {
-      this.logger.log(`Visitor ID extrait des métadonnées: ${visitorIdFromMetadata}`);
+    // Extraire visitor_id des mu00e9tadonnu00e9es si disponible
+    const metadata = session.metadata || {};
+    let visitorIdFromMetadata: string | undefined = undefined;
+    
+    if (metadata && (metadata.fd_visitor_id || metadata.visitor_id)) {
+      visitorIdFromMetadata = metadata.fd_visitor_id || metadata.visitor_id;
+      this.logger.log(`Visitor ID trouvu00e9 dans les mu00e9tadonnu00e9es: ${visitorIdFromMetadata}`);
     } else {
-      this.logger.log('Aucun visitor_id trouvé dans les métadonnées');
+      this.logger.log('Aucun visitor_id trouvu00e9 dans les mu00e9tadonnu00e9es');
     }
     
-    // 3. Si pas de visitor_id dans les métadonnées, chercher via le bridge
-    let visitorIdFromBridge = null;
+    // Si pas de visitor_id dans les mu00e9tadonnu00e9es, chercher via le bridge
+    let visitorIdFromBridge: string | undefined = undefined;
     if (!visitorIdFromMetadata) {
-      visitorIdFromBridge = await this.bridgingService.findVisitorIdByEmail(email);
+      const bridgeResult = await this.bridgingService.findVisitorIdByEmail(email);
+      visitorIdFromBridge = bridgeResult || undefined;
       if (visitorIdFromBridge) {
-        this.logger.log(`Visitor ID trouvé via bridge par email: ${visitorIdFromBridge}`);
+        this.logger.log(`Visitor ID trouvu00e9 via bridge par email: ${visitorIdFromBridge}`);
       } else {
-        this.logger.log(`Aucun visitor_id trouvé via bridge pour l'email ${email}`);
+        this.logger.log(`Aucun visitor_id trouvu00e9 via bridge pour l'email ${email}`);
       }
     }
     
-    // 4. Déterminer le visitor_id final à utiliser
-    const finalVisitorId = visitorIdFromMetadata || visitorIdFromBridge || null;
-    this.logger.log(`Visitor ID final utilisé: ${finalVisitorId || 'non disponible'}`);
-    
-    // Préparer les données de paiement
-    const amount = session.amount_total ? session.amount_total / 100 : 0; // Convertir centimes en unités
-    const currency = session.currency || 'usd';
+    // Du00e9terminer le visitor_id final u00e0 utiliser
+    const finalVisitorId = visitorIdFromMetadata || visitorIdFromBridge;
+    this.logger.log(`Visitor ID final utilisu00e9: ${finalVisitorId || 'non disponible'}`);
     
     try {
-      // 5. Trouver ou créer le master lead avec le visitor_id et l'email
+      // Cru00e9er/trouver un master lead et associer le visitor_id si disponible
       const masterLead = await this.masterLeadService.findOrCreateMasterLead(
         {
-          email: email,
-          visitor_id: finalVisitorId || undefined
+          email,
+          visitor_id: finalVisitorId
         },
-        userId || undefined,
+        userId,
         'stripe'
       );
       
-      this.logger.log(`Master lead identifié/créé: ${masterLead.id}`);
+      this.logger.log(`Master lead trouvu00e9/cru00e9u00e9: ${masterLead.id}`);
       
-      // 6. Créer un touchpoint pour l'événement de paiement
-      const touchpointData = {
-        visitor_id: finalVisitorId || 'unknown',
-        event_type: 'payment_succeeded',
-        master_lead_id: masterLead.id,
-        event_data: {
-          stripe_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent || null,
-          payment_amount: amount,
-          payment_currency: currency,
-          payment_status: session.payment_status || 'completed',
-          customer_email: email,
-          customer_name: session.customer_details?.name,
-          product_id: session.metadata?.product_id || session.line_items?.data[0]?.price?.id,
-          payment_method: session.payment_method_types?.join(',') || 'card',
-          payment_time: new Date().toISOString(),
-          master_lead_id: masterLead.id,
-          // Informations UTM si disponibles
-          utm_source: session.metadata?.utm_source,
-          utm_medium: session.metadata?.utm_medium,
-          utm_campaign: session.metadata?.utm_campaign
-        },
-        page_url: session.metadata?.page_url
-      };
-      
-      const touchpoint = await this.touchpointsService.create(touchpointData);
-      this.logger.log(`Touchpoint de paiement créé avec succès: ${touchpoint.id}`);
+      // Cru00e9er un touchpoint pour le paiement uniquement si nous avons un visitor_id
+      if (finalVisitorId) {
+        try {
+          const touchpointData = {
+            visitor_id: finalVisitorId,
+            master_lead_id: masterLead.id,
+            event_type: 'payment_succeeded',
+            event_data: {
+              payment_intent: session.payment_intent,
+              amount: session.amount_total,
+              currency: session.currency,
+              email: email,
+              customer: session.customer,
+              product_name: session.metadata?.product_name || 'Unknown product',
+            },
+          };
+          
+          const touchpoint = await this.touchpointsService.create(touchpointData);
+          this.logger.log(`Touchpoint payment_succeeded cru00e9u00e9: ${touchpoint.id}`);
+        } catch (touchpointError) {
+          this.logger.error(`Erreur lors de la cru00e9ation du touchpoint: ${touchpointError.message}`, touchpointError);
+        }
+      } else {
+        this.logger.warn(`Aucun visitor_id disponible, touchpoint non cru00e9u00e9 pour le paiement de ${email}`);
+      }
       
       return {
         success: true,
-        masterLeadId: masterLead.id,
-        visitorId: finalVisitorId,
-        touchpointId: touchpoint.id,
-        sessionId: session.id
+        lead_id: masterLead.id,
+        email: email,
+        visitor_id: finalVisitorId || undefined,
+        payment_intent: session.payment_intent,
       };
     } catch (error) {
-      this.logger.error(`Erreur lors du traitement de la session ${session.id}`, error);
-      return { success: false, error: error.message };
+      this.logger.error(`Erreur gu00e9nu00e9rale lors du traitement du paiement: ${error.message}`, error);
+      throw error;
     }
   }
 }
