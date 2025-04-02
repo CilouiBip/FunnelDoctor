@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { TouchpointsService } from '../touchpoints/touchpoints.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { FunnelProgressService } from '../funnel-progress/funnel-progress.service';
+import { MasterLeadService } from '../leads/services/master-lead.service';
 
 @Injectable()
 export class RdvService {
@@ -15,6 +16,7 @@ export class RdvService {
     private readonly touchpointsService: TouchpointsService,
     private readonly supabaseService: SupabaseService,
     private readonly funnelProgressService: FunnelProgressService,
+    private readonly masterLeadService: MasterLeadService,
   ) {}
 
   /**
@@ -299,12 +301,11 @@ export class RdvService {
     }
 
     try {
-      const result = await this.bridgingService.associateVisitorToLead({
+      const result = await this.bridgingService.createAssociation({
         visitor_id,
         email: invitee.email,
-        user_id: userId,
-        source: 'calendly',
-        metadata: {
+        source_action: 'calendly',
+        event_data: {
           event_type: payload.payload.event_type?.name,
           invitee_name: invitee.name,
           invitee_timezone: invitee.timezone,
@@ -317,18 +318,26 @@ export class RdvService {
           rdv_time: new Date().toISOString(),
         },
       });
+      
+      // Créer ou récupérer le MasterLead à partir de l'email et visitor_id
+      const masterLead = await this.masterLeadService.findOrCreateMasterLead(
+        { email: invitee.email, visitor_id },
+        userId,
+        'rdv_service'
+      );
 
       this.logger.log(
-        `Bridging réussi pour RDV Calendly: visitor_id=${visitor_id} -> lead_id=${result.lead_id}`
+        `Bridging réussi pour RDV Calendly: visitor_id=${visitor_id} -> MasterLead ID=${masterLead.id}`
       );
       
       // Créer un touchpoint pour l'événement rdv_scheduled
       try {
         const touchpointResult = await this.touchpointsService.create({
+          master_lead_id: masterLead.id, // Utiliser l'ID du MasterLead
           visitor_id,
           event_type: 'rdv_scheduled',
           event_data: {
-            lead_id: result.lead_id,
+            // Suppression de lead_id qui faisait référence à result.lead_id
             calendly_event_uri: payload.payload.scheduled_event?.uri,
             scheduled_time: payload.payload.scheduled_event?.start_time,
             invitee_email: invitee.email,
@@ -351,7 +360,7 @@ export class RdvService {
           .getAdminClient()
           .from('conversion_events')
           .insert({
-            lead_id: result.lead_id,
+            lead_id: masterLead.id, // Utiliser l'ID du MasterLead
             event_type: 'DEMO_REQUEST',
             event_data: {
               source: 'calendly',
@@ -390,8 +399,9 @@ export class RdvService {
       
       return {
         success: true, 
-        lead_id: result.lead_id,
+        masterLeadId: masterLead.id, // Utiliser l'ID du MasterLead avec un nom plus explicite
         visitor_id,
+        association_id: result.association.id, // Conserver aussi l'ID de l'association
       };
     } catch (error) {
       this.logger.error('Erreur lors du bridging pour RDV Calendly', error);
