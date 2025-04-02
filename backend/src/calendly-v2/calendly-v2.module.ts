@@ -4,8 +4,7 @@ import { CalendlyV2Service } from './calendly-v2.service';
 import { CalendlyV2SubscriptionService } from './calendly-v2-subscription.service';
 import { CalendlyV2WebhookController } from './calendly-v2-webhook.controller';
 import { CalendlyV2SetupController } from './calendly-v2-setup.controller';
-import { CalendlyV2EnvCheckController } from './calendly-v2-env-check.controller';
-import { CalendlyV2TestController } from './calendly-v2-test.controller';
+// Imports des contrôleurs de test/environnement supprimés (fichiers manquants)
 import { BridgingModule } from '../bridging/bridging.module';
 import { TouchpointsModule } from '../touchpoints/touchpoints.module';
 import { FunnelProgressModule } from '../funnel-progress/funnel-progress.module';
@@ -24,7 +23,7 @@ import { ConfigModule } from '@nestjs/config';
     SupabaseModule,
     ConfigModule,
   ],
-  controllers: [CalendlyV2WebhookController, CalendlyV2SetupController, CalendlyV2EnvCheckController, CalendlyV2TestController],
+  controllers: [CalendlyV2WebhookController, CalendlyV2SetupController],
   providers: [CalendlyV2Service, CalendlyV2SubscriptionService],
   exports: [CalendlyV2Service, CalendlyV2SubscriptionService],
 })
