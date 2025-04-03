@@ -1,9 +1,14 @@
-import { Controller, Post, Body, Logger, HttpStatus, HttpException } from '@nestjs/common';
+import { Controller, Post, Body, Logger, HttpStatus, HttpException, HttpCode } from '@nestjs/common';
 import { CalendlyWebhookDto, StripeWebhookDto } from './dto/webhook.dto';
+import { IclosedWebhookDto } from './dto/iclosed-webhook.dto';
+import { WebhooksService } from './webhooks.service';
 
-@Controller('webhooks')
+@Controller('api/webhooks')
 export class WebhooksController {
-  constructor(private readonly logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    private readonly webhooksService: WebhooksService
+  ) {}
 
   @Post('calendly-test')
   async testCalendlyWebhook(@Body() payload: CalendlyWebhookDto) {
@@ -183,6 +188,31 @@ export class WebhooksController {
       };
     } catch (error) {
       this.logger.error('Erreur lors du traitement du webhook Stripe', error);
+      throw new HttpException(
+        error.message || 'Internal server error', 
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * Gère les données de réservation provenant d'iClosed via un webhook Zapier
+   * 
+   * @param iclosedData Données validées du webhook iClosed
+   * @returns Un message de confirmation pour Zapier
+   */
+  @Post('iclosed')
+  @HttpCode(200)
+  async handleIclosedWebhook(@Body() iclosedData: IclosedWebhookDto) {
+    try {
+      console.log('Received iClosed Webhook:', iclosedData);
+      
+      // Appel au service pour traiter les données
+      await this.webhooksService.handleIclosedWebhook(iclosedData);
+      
+      return { success: true, message: 'iClosed webhook received successfully' };
+    } catch (error) {
+      this.logger.error('Error processing iClosed webhook', error);
       throw new HttpException(
         error.message || 'Internal server error', 
         error.status || HttpStatus.INTERNAL_SERVER_ERROR
