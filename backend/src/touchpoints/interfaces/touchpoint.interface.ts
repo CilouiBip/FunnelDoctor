@@ -1,6 +1,7 @@
 export interface Touchpoint {
   id: string;
   visitor_id: string;
+  master_lead_id?: string;
   tracking_link_id?: string;
   event_type: string;
   event_data?: Record<string, any>;

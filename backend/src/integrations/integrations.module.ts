@@ -36,10 +36,11 @@ import { YouTubeAnalyticsController } from './youtube/youtube-analytics.controll
       }),
     }),
   ],
-  controllers: [YouTubeController, YouTubeDataController, YouTubeDataTestController, YouTubeAnalyticsController],
+  controllers: [YouTubeController, YouTubeDataController, YouTubeDataTestController, YouTubeAnalyticsController, IntegrationsController],
   providers: [
     EncryptionService,
     IntegrationService,
+    IntegrationsService,
     YouTubeAuthService,
     YouTubeTokenRefreshService,
     YouTubeAnalyticsService,
@@ -49,6 +50,7 @@ import { YouTubeAnalyticsController } from './youtube/youtube-analytics.controll
   exports: [
     EncryptionService,
     IntegrationService,
+    IntegrationsService,
     YouTubeAuthService,
     YouTubeAnalyticsService,
     YouTubeDataService,

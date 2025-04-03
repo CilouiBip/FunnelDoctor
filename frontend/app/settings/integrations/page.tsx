@@ -5,6 +5,14 @@ import Link from 'next/link';
 
 const IntegrationsPage = () => {
   const [activeTab, setActiveTab] = useState('youtube');
+  const [isConnectingYoutube, setIsConnectingYoutube] = useState(false);
+
+  const handleConnectYoutube = () => {
+    setIsConnectingYoutube(true);
+    // Redirection vers l'endpoint backend qui initie le flux OAuth Google
+    window.location.href = '/api/auth/youtube/authorize';
+    // Note: Le setIsConnectingYoutube(false) n'arrivera jamais car on quitte la page
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -51,21 +59,21 @@ const IntegrationsPage = () => {
           
           <p className="text-gray-600 mb-6">Connectez votre chaîne YouTube pour suivre les conversions depuis vos vidéos.</p>
           
-          <form className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
-              <input type="text" className="w-full px-4 py-2 border rounded-md" />
-            </div>
+          <div className="mt-6">
+            <p className="text-gray-700 mb-4">
+              En connectant votre compte YouTube, vous permettez à FunnelDoctor d'accéder à vos données vidéo
+              pour analyser les performances et suivre les conversions.
+            </p>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
-              <input type="password" className="w-full px-4 py-2 border rounded-md" />
-            </div>
-            
-            <button type="button" className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark">
-              Connecter YouTube
+            <button 
+              type="button" 
+              className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
+              onClick={handleConnectYoutube}
+              disabled={isConnectingYoutube}
+            >
+              {isConnectingYoutube ? 'Redirection...' : 'Connecter YouTube'}
             </button>
-          </form>
+          </div>
         </div>
       )}
 

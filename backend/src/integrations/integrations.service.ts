@@ -1,9 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EncryptionService } from './encryption/encryption.service';
 import { SaveCalendlyDto } from './dto/save-calendly.dto';
 import { SaveStripeDto } from './dto/save-stripe.dto';
 import { SaveAcCkDto } from './dto/save-ac-ck.dto';
+
+/**
+ * Types d'intu00e9grations supportu00e9s par le service
+ */
+export type IntegrationType = 'calendly' | 'stripe' | 'ac' | 'ck' | 'youtube';
 
 /**
  * Service de gestion des intu00e9grations d'API tierces
@@ -171,15 +176,16 @@ export class IntegrationsService {
   }
 
   /**
-   * Ru00e9cupu00e8re une configuration d'intu00e9gration
+   * Ru00e9cupu00e8re une configuration d'intu00e9gration pour un utilisateur spu00e9cifique
    * 
    * @param userId ID de l'utilisateur
-   * @param integrationType Type d'intu00e9gration ('calendly', 'stripe', 'ac', 'ck')
-   * @returns La configuration du00e9cryptu00e9e ou null
+   * @param integrationType Type d'intu00e9gration ('calendly', 'stripe', 'ac', 'ck', 'youtube')
+   * @returns La configuration du00e9cryptu00e9e ou null si l'intu00e9gration n'existe pas
+   * @throws NotFoundException si l'utilisateur n'existe pas ou si l'intu00e9gration n'est pas active
    */
   async getIntegrationConfig(
     userId: string,
-    integrationType: string
+    integrationType: IntegrationType
   ): Promise<Record<string, any> | null> {
     try {
       const supabase = this.supabaseService.getAdminClient();
@@ -201,6 +207,9 @@ export class IntegrationsService {
         this.logger.log(`Intu00e9gration ${integrationType} inactive pour l'utilisateur ${userId}`);
         return null;
       }
+      
+      this.logger.log(`Configuration d'intu00e9gration ${integrationType} trouvu00e9e pour l'utilisateur ${userId}`);
+
       
       // Copier la configuration pour la modifier
       const config = { ...data.config };

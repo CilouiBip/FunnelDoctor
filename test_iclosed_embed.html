@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test iClosed Embed UTM (via Cookies)</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { margin-bottom: 20px; }
+        pre { background-color: #f0f0f0; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word; margin-bottom: 15px;}
+        .widget-container { border: 1px solid #ccc; margin-top: 20px; padding: 10px; min-height: 640px; /* Pour voir si le widget charge */}
+    </style>
+</head>
+<body>
+
+    <h1>Page de Test iClosed Embed (UTM depuis Cookies)</h1>
+    <p>Ce script va lire les UTMs de l'URL de cette page, les stocker en cookies, puis charger dynamiquement le widget iClosed ci-dessous.</p>
+
+    <p><strong>URL Actuelle :</strong></p>
+    <pre id="current-url">Chargement...</pre>
+
+    <p><strong>Cookies UTM Définis (avant chargement widget) :</strong></p>
+    <pre id="utm-cookies">Définition...</pre>
+
+    <!-- Conteneur où le widget sera injecté ou reconnu -->
+    <div id="iclosed-widget-container" class="widget-container">
+         <!-- Le div du widget sera placé ici par le script iClosed ou était ici sans JS -->
+         <!-- Assurons-nous qu'il est bien présent pour que le script widget.js le trouve -->
+         <div class="iclosed-widget"
+              data-url="https://app.iclosed.io/e/zenalacarte/test-funnel-doctor" <!-- URL SIMPLE ICI -->
+              title="Test funnel doctor"
+              style="width: 100%; height: 620px;">
+              <!-- Contenu sera chargé par widget.js -->
+         </div>
+    </div>
+
+    <script>
+        // Fonction pour définir un cookie (simple, session-only pour le test)
+        function setCookie(name, value) {
+            console.log('Setting cookie:', name, '=', value);
+            document.cookie = name + "=" + encodeURIComponent(value || "") + "; path=/";
+        }
+
+        // Fonction pour lire les paramètres de l'URL
+        function getQueryParams() {
+            const params = {};
+            const queryString = window.location.search.substring(1);
+            const regex = /([^&=]+)=?([^&]*)/g; // Gère les clés sans valeur
+            let m;
+            while (m = regex.exec(queryString)) {
+                params[decodeURIComponent(m[1])] = decodeURIComponent(m[2].replace(/\+/g, ' ')); // Remplace + par espace
+            }
+            console.log('Query Params:', params);
+            return params;
+        }
+
+        // --- Exécution ---
+        try {
+            // 1. Afficher l'URL actuelle
+            document.getElementById('current-url').textContent = window.location.href;
+
+            // 2. Lire les UTMs de l'URL
+            const queryParams = getQueryParams();
+            const utmSource = queryParams['utm_source'] || '';
+            const utmMedium = queryParams['utm_medium'] || '';
+            const utmCampaign = queryParams['utm_campaign'] || '';
+            const utmContent = queryParams['utm_content'] || '';
+            const utmTerm = queryParams['utm_term'] || '';
+
+            // 3. Stocker les UTMs dans des cookies first-party
+            setCookie('utm_source', utmSource);
+            setCookie('utm_medium', utmMedium);
+            setCookie('utm_campaign', utmCampaign);
+            setCookie('utm_content', utmContent); // Le plus important pour nous
+            setCookie('utm_term', utmTerm);
+
+            // 3b. Stocker aussi les "first_utm" (iClosed semble les chercher aussi)
+            // Pour ce test, on met les mêmes que les UTMs courants
+            setCookie('first_utm_source', utmSource);
+            setCookie('first_utm_medium', utmMedium);
+            setCookie('first_utm_campaign', utmCampaign);
+            setCookie('first_utm_content', utmContent);
+            setCookie('first_utm_term', utmTerm);
+
+            // 4. Afficher les cookies définis (pour débogage)
+             // Lecture simple pour l'affichage, peut ne pas tout montrer (HttpOnly etc)
+            document.getElementById('utm-cookies').textContent = document.cookie || '(Aucun cookie lisible par JS)';
+            console.log('Current document.cookie:', document.cookie);
+
+            // 5. Charger dynamiquement le script iClosed APRÈS avoir défini les cookies
+            // Vérifie si le script n'est pas déjà dans le HTML (il l'est dans ce cas)
+            // On s'assure juste que notre script s'exécute avant que widget.js ne fasse son travail.
+            // Si widget.js est 'async', notre script a de bonnes chances de finir avant.
+            console.log("Cookies UTM définis. Le script widget.js (chargé via HTML) devrait maintenant pouvoir les lire.");
+
+        } catch (e) {
+            console.error("Erreur dans le script de setup des cookies:", e);
+            document.getElementById('utm-cookies').textContent = "Erreur lors de la définition des cookies.";
+        }
+
+    </script>
+    <!-- Le script iClosed est chargé via la balise script dans le HTML -->
+    <script type="text/javascript" src="https://app.iclosed.io/assets/widget.js" async></script>
+
+    <p style="margin-top: 20px;">Fin de la page de test.</p>
+
+</body>
+</html>

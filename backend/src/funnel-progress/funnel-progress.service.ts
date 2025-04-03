@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 
 @Injectable()
@@ -6,6 +6,75 @@ export class FunnelProgressService {
   private readonly logger = new Logger(FunnelProgressService.name);
 
   constructor(private readonly supabaseService: SupabaseService) {}
+
+  /**
+   * Trouve ou crée un enregistrement de progression de funnel pour un lead
+   * @param leadId ID du master lead
+   * @param userId ID de l'utilisateur propriétaire
+   * @returns L'enregistrement de progression
+   */
+  async findOrCreateProgressForLead(leadId: string, userId?: string) {
+    const { data: existingProgress, error: fetchError } = await this.supabaseService
+      .getAdminClient()
+      .from('funnel_progress')
+      .select('*')
+      .eq('lead_id', leadId)
+      .single();
+    
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      this.logger.error(`Erreur lors de la recherche de progression: ${fetchError.message}`);
+      throw new Error(`Erreur lors de la recherche de progression pour le lead ${leadId}`);
+    }
+    
+    if (existingProgress) {
+      return existingProgress;
+    }
+    
+    // Créer un nouvel enregistrement de progression
+    const { data: newProgress, error: insertError } = await this.supabaseService
+      .getAdminClient()
+      .from('funnel_progress')
+      .insert({
+        lead_id: leadId,
+        stage: 'INITIAL',
+        user_id: userId,
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+      this.logger.error(`Erreur lors de la création de progression: ${insertError.message}`);
+      throw new Error(`Erreur lors de la création de progression pour le lead ${leadId}`);
+    }
+    
+    return newProgress;
+  }
+
+  /**
+   * Met à jour la progression du funnel avec un événement spécifique
+   * @param progressId ID de l'enregistrement de progression
+   * @param stage Nouvelle étape du funnel
+   * @returns L'enregistrement de progression mis à jour
+   */
+  async updateProgressWithEvent(progressId: string, stage: string) {
+    const { data: updatedProgress, error } = await this.supabaseService
+      .getAdminClient()
+      .from('funnel_progress')
+      .update({
+        stage,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', progressId)
+      .select()
+      .single();
+    
+    if (error) {
+      this.logger.error(`Erreur lors de la mise à jour de progression: ${error.message}`);
+      throw new Error(`Erreur lors de la mise à jour de progression ${progressId}`);
+    }
+    
+    return updatedProgress;
+  }
 
   /**
    * Met u00e0 jour le progru00e8s du funnel pour un visiteur
