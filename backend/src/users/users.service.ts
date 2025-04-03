@@ -5,6 +5,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class UsersService {
@@ -192,6 +193,63 @@ export class UsersService {
     if (error) {
       throw error;
     }
+  }
+
+  /**
+   * Génère une nouvelle clé API pour un utilisateur
+   * @param userId ID de l'utilisateur
+   * @returns La clé API générée
+   */
+  async generateApiKey(userId: string): Promise<string> {
+    console.log(`Génération d'une clé API pour l'utilisateur ID: ${userId}`);
+    
+    // Générer un UUID v4 comme clé API
+    const apiKey = uuidv4();
+    
+    // Mettre à jour l'utilisateur avec la nouvelle clé API
+    const { data, error } = await this.supabaseService
+      .getAdminClient()
+      .from('users')
+      .update({ api_key: apiKey })
+      .eq('id', userId)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Erreur lors de la génération de la clé API:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      throw new NotFoundException(`Utilisateur avec ID ${userId} non trouvé`);
+    }
+    
+    console.log(`Clé API générée avec succès pour l'utilisateur ID: ${userId}`);
+    return apiKey;
+  }
+  
+  /**
+   * Récupère l'ID d'utilisateur correspondant à une clé API
+   * @param apiKey Clé API à vérifier
+   * @returns ID de l'utilisateur ou null si non trouvé
+   */
+  async findUserIdByApiKey(apiKey: string): Promise<string | null> {
+    console.log(`Recherche d'un utilisateur par clé API: ${apiKey}`);
+    
+    const { data, error } = await this.supabaseService
+      .getAdminClient()
+      .from('users')
+      .select('id')
+      .eq('api_key', apiKey)
+      .single();
+    
+    if (error || !data) {
+      console.log(`Aucun utilisateur trouvé avec la clé API: ${apiKey}`);
+      return null;
+    }
+    
+    console.log(`Utilisateur trouvé avec la clé API: ${apiKey}, ID: ${data.id}`);
+    return data.id;
   }
 
   /**

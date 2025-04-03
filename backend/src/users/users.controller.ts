@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, HttpCode } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -52,5 +52,21 @@ export class UsersController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  /**
+   * Génère une nouvelle clé API pour l'utilisateur authentifié
+   */
+  @Post('me/api-key')
+  @HttpCode(200)
+  async generateApiKey(@Req() request: Request) {
+    const user = request.user as any;
+    
+    if (!user || !user.id) {
+      throw new Error('Utilisateur non authentifié ou informations manquantes');
+    }
+    
+    const apiKey = await this.usersService.generateApiKey(user.id);
+    return { apiKey };
   }
 }
