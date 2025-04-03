@@ -280,7 +280,7 @@ const IntegrationsPage = () => {
               
               <div className="pt-4">
                 <a 
-                  href="#zapier-template-link" 
+                  href="https://zapier.com/shared/1b042e01c510682165d66e5cb763182da9676c74" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 inline-flex items-center"
