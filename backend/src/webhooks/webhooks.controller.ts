@@ -3,7 +3,7 @@ import { CalendlyWebhookDto, StripeWebhookDto } from './dto/webhook.dto';
 import { IclosedWebhookDto } from './dto/iclosed-webhook.dto';
 import { WebhooksService } from './webhooks.service';
 
-@Controller('api/webhooks')
+@Controller('webhooks')
 export class WebhooksController {
   constructor(
     private readonly logger: Logger,
