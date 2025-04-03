@@ -93,6 +93,31 @@
     }
   }
   
+  /**
+   * Writes FunnelDoctor visitor ID and UTM parameters to first-party cookies.
+   * @param {string} visitorId - The unique visitor identifier.
+   * @param {object} utmParams - An object containing UTM parameters.
+   */
+  function writeFunnelDoctorCookies(visitorId, utmParams) {
+    // Calculate expiration date (1 year from now)
+    const expirationDate = new Date();
+    expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+    const expires = expirationDate.toUTCString();
+    
+    // Write visitor ID cookie
+    document.cookie = `_fd_vid=${visitorId}; path=/; expires=${expires}; SameSite=Lax; Secure`;
+    
+    // List of UTM parameters to process
+    const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+    
+    // Write UTM cookies if they exist in the provided object
+    utmKeys.forEach(key => {
+      if (utmParams && utmParams[key] && utmParams[key].trim() !== '') {
+        document.cookie = `_fd_${key}=${encodeURIComponent(utmParams[key])}; path=/; expires=${expires}; SameSite=Lax; Secure`;
+      }
+    });
+  }
+  
   // Recherche d'un éventuel code court dans l'URL pour le lier au tracking
   function findTrackingLinkId() {
     // Si l'URL contient un paramètre fd_tlid (funnel doctor tracking link id)
@@ -317,6 +342,13 @@
   function initialize() {
     // Charger la configuration depuis les attributs data-
     initializeFromAttributes();
+    
+    // Get visitor ID and current URL UTM parameters
+    const visitorId = getVisitorId();
+    const currentUtmParams = extractUTMParams();
+
+    // Write cookies early
+    writeFunnelDoctorCookies(visitorId, currentUtmParams);
     
     // Sauvegarder les UTM s'ils sont présents dans l'URL
     saveUTMParams();
