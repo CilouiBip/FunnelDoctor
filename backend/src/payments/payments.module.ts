@@ -6,6 +6,7 @@ import { FunnelProgressModule } from '../funnel-progress/funnel-progress.module'
 import { ConfigModule } from '@nestjs/config';
 import { TouchpointsModule } from '../touchpoints/touchpoints.module';
 import { LeadsModule } from '../leads/leads.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   imports: [
@@ -13,7 +14,8 @@ import { LeadsModule } from '../leads/leads.module';
     ConfigModule, 
     FunnelProgressModule,
     TouchpointsModule,
-    LeadsModule
+    LeadsModule,
+    IntegrationsModule
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService],
