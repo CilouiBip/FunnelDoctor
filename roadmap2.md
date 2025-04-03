@@ -43,7 +43,7 @@
     *   **Stratégie :**
         *   **Stripe :** Injecter `userId` (ou `orgId`) FunnelDoctor dans les `metadata` de la session Checkout. Le webhook lira cette metadata.
         *   **Calendly :** Lors de la création du webhook via l'API Calendly, si possible, inclure le `userId` FunnelDoctor dans l'URL du webhook (ex: `/webhook?userId=...`) ou via un scope/filtrage si l'API le permet. Sinon, nécessitera une table de mapping `webhook_id_calendly -> userId`.
-        *   **iClosed (via Zapier) :** L'utilisateur configure sa **Clé API FunnelDoctor** personnelle dans l'action Webhook POST du Zap. Le backend utilise cette clé pour identifier le `userId`.
+        *   ✅ **iClosed (via Zapier) :** L'utilisateur configure sa **Clé API FunnelDoctor** personnelle dans l'action Webhook POST du Zap. Le backend utilise cette clé pour identifier le `userId`.
     *   Le backend **valide systématiquement** cette liaison avant de traiter l'événement pour garantir la multi-location.
 
 ## 5. Périmètre et Objectifs Stricts du MVP
@@ -68,7 +68,7 @@
     *   **Test:** Vérifier manuellement la création/mise à jour des cookies (`_fd_vid`, `_fd_utm_*`) dans le navigateur.
 2.  **MVP-2 : Backend - Validation Démarrage & Test Initial Flux YouTube OAuth.** (Infrastructure/Exécution)
     *   **Test:** Confirmer démarrage backend sans erreur bloquante. Déclencher manuellement le flux OAuth YT et vérifier le stockage des tokens dans la BDD pour l'utilisateur test.
-3.  **MVP-3 : Backend - Endpoint Webhook iClosed (`/api/webhooks/iclosed`).** (Développement Backend)
+3.  ✅ **MVP-3 : Backend - Endpoint Webhook iClosed (`/api/webhooks/iclosed`).** (Développement Backend)
     *   **Test:** Envoyer un POST simulé (Postman) avec `apiKey`, `email`, `visitorId`. Vérifier création `touchpoint` lié au bon `userId` et `master_lead`. Tests unitaires Jest.
 4.  **MVP-4 : Préparation Ressource - Création Template Zapier iClosed.** (Configuration Externe)
     *   **Test:** Activer le template sur un compte Zapier test, vérifier qu'il envoie le payload attendu à un outil de test (ex: webhook.site).
