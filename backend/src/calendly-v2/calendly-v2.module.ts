@@ -10,6 +10,7 @@ import { TouchpointsModule } from '../touchpoints/touchpoints.module';
 import { FunnelProgressModule } from '../funnel-progress/funnel-progress.module';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { ConfigModule } from '@nestjs/config';
+import { LeadsModule } from '../leads/leads.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ConfigModule } from '@nestjs/config';
     FunnelProgressModule,
     SupabaseModule,
     ConfigModule,
+    LeadsModule,
   ],
   controllers: [CalendlyV2WebhookController, CalendlyV2SetupController],
   providers: [CalendlyV2Service, CalendlyV2SubscriptionService],
