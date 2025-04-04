@@ -36,4 +36,8 @@ export class CreateTouchpointDto {
   @IsUUID(4)
   @IsOptional()
   master_lead_id?: string;
+
+  @IsString()
+  @IsOptional()
+  source?: string;
 }
