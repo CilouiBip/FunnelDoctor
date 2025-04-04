@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom } from 'rxjs';
@@ -13,9 +13,9 @@ import { SupabaseService } from '../supabase/supabase.service';
 @Injectable()
 export class CalendlyAuthService {
   private readonly logger = new Logger(CalendlyAuthService.name);
-  private readonly clientId: string;
-  private readonly clientSecret: string;
-  private readonly redirectUri: string;
+  private readonly clientId: string | undefined;
+  private readonly clientSecret: string | undefined;
+  private readonly redirectUri: string | undefined;
   private readonly scopes: string[];
 
   constructor(
@@ -25,23 +25,26 @@ export class CalendlyAuthService {
     private readonly calendlyV2Service: CalendlyV2Service,
     private readonly supabaseService: SupabaseService,
   ) {
-    // Ru00e9cupu00e9ration des variables de configuration
-    const clientId = this.configService.get<string>('CALENDLY_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('CALENDLY_CLIENT_SECRET');
-    const redirectUri = this.configService.get<string>('CALENDLY_REDIRECT_URI');
+    // Récupération des variables de configuration sans lever d'erreur immédiatement
+    this.clientId = this.configService.get<string>('CALENDLY_CLIENT_ID');
+    this.clientSecret = this.configService.get<string>('CALENDLY_CLIENT_SECRET');
+    this.redirectUri = this.configService.get<string>('CALENDLY_REDIRECT_URI');
     const scopesStr = this.configService.get<string>('CALENDLY_SCOPES');
 
-    // Vu00e9rification des variables requises
-    if (!clientId || !clientSecret || !redirectUri) {
-      throw new Error('Missing Calendly OAuth configuration');
-    }
-
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-    this.redirectUri = redirectUri;
+    // Initialisation des scopes par défaut
     this.scopes = scopesStr ? scopesStr.split(' ') : ['default'];
-
-    this.logger.log('CalendlyAuthService initialisu00e9 avec succu00e8s');
+    
+    // Log des informations de configuration
+    if (this.clientId && this.clientSecret && this.redirectUri) {
+      this.logger.log('CalendlyAuthService initialisé avec succès');
+    } else {
+      this.logger.warn('CalendlyAuthService initialisé avec une configuration incomplète - les méthodes vérifieront les paramètres manquants lors de leur appel');
+      const missingParams: string[] = [];
+      if (!this.clientId) missingParams.push('CALENDLY_CLIENT_ID');
+      if (!this.clientSecret) missingParams.push('CALENDLY_CLIENT_SECRET');
+      if (!this.redirectUri) missingParams.push('CALENDLY_REDIRECT_URI');
+      this.logger.warn(`Paramètres manquants: ${missingParams.join(', ')}`);
+    }
   }
 
   /**
@@ -51,7 +54,19 @@ export class CalendlyAuthService {
    */
   async generateAuthUrl(userId: string): Promise<string> {
     try {
-      // Gu00e9nu00e9ration d'un state unique pour su00e9curiser le flux OAuth
+      // Vérification des variables de configuration requises
+      if (!this.clientId || !this.clientSecret || !this.redirectUri) {
+        const missingParams: string[] = [];
+        if (!this.clientId) missingParams.push('CALENDLY_CLIENT_ID');
+        if (!this.clientSecret) missingParams.push('CALENDLY_CLIENT_SECRET');
+        if (!this.redirectUri) missingParams.push('CALENDLY_REDIRECT_URI');
+        
+        const errorMsg = `Configuration OAuth Calendly manquante dans .env: ${missingParams.join(', ')}`;
+        this.logger.error(errorMsg);
+        throw new InternalServerErrorException(errorMsg);
+      }
+      
+      // Génération d'un state unique pour sécuriser le flux OAuth
       const state = uuidv4();
 
       // TODO: Stocker state et userId dans la DB avec expiration
@@ -94,11 +109,23 @@ export class CalendlyAuthService {
    */
   async handleCallback(code: string, state: string): Promise<{ redirectUrl: string }> {
     try {
-      // TODO: Implu00e9menter la logique complu00e8te
-      // - Valider state et ru00e9cupu00e9rer userId
-      // - u00c9changer code contre tokens
+      // Vérification des variables de configuration requises
+      if (!this.clientId || !this.clientSecret || !this.redirectUri) {
+        const missingParams: string[] = [];
+        if (!this.clientId) missingParams.push('CALENDLY_CLIENT_ID');
+        if (!this.clientSecret) missingParams.push('CALENDLY_CLIENT_SECRET');
+        if (!this.redirectUri) missingParams.push('CALENDLY_REDIRECT_URI');
+        
+        const errorMsg = `Configuration OAuth Calendly manquante dans .env: ${missingParams.join(', ')}`;
+        this.logger.error(errorMsg);
+        throw new InternalServerErrorException(errorMsg);
+      }
+      
+      // TODO: Implémenter la logique complète
+      // - Valider state et récupérer userId
+      // - Échanger code contre tokens
       // - Sauvegarder tokens
-      // - Cru00e9er webhook
+      // - Créer webhook
 
       // URL de redirection vers le frontend (succu00e8s factice pour l'instant)
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
