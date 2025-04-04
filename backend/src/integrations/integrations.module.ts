@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { HttpModule } from '@nestjs/axios';
 import { SupabaseModule } from '../supabase/supabase.module';
@@ -22,7 +22,7 @@ import { YouTubeAnalyticsController } from './youtube/youtube-analytics.controll
 @Module({
   imports: [
     SupabaseModule,
-    AuthModule,
+    forwardRef(() => AuthModule),
     ScheduleModule.forRoot(),
     HttpModule,
     JwtModule.registerAsync({

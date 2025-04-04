@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -20,7 +20,7 @@ import { CalendlyV2Module } from '../calendly-v2/calendly-v2.module';
     EmailModule,
     SupabaseModule,
     HttpModule,
-    IntegrationsModule,
+    forwardRef(() => IntegrationsModule),
     CalendlyV2Module,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
