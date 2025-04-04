@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, Res, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Get, Query, Req, Res, UseGuards, Logger, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -17,6 +17,30 @@ export class CalendlyAuthController {
   ) {}
 
   /**
+   * Méthode sécurisée pour initier le flux OAuth2 Calendly et retourner l'URL d'autorisation au frontend
+   * 
+   * @param request Requête contenant l'utilisateur authentifié
+   * @returns Objet contenant l'URL d'autorisation à utiliser pour la redirection frontend
+   */
+  @Get('initiate')
+  @UseGuards(JwtAuthGuard) // Sécurise CET endpoint
+  async initiateOAuth(@Req() request) {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('User not found in request');
+    }
+    this.logger.log(`Initiating Calendly OAuth for user: ${userId}`);
+    try {
+      const authUrl = await this.calendlyAuthService.generateAuthUrl(userId);
+      // Retourne l'URL au frontend
+      return { authorizeUrl: authUrl };
+    } catch (error) {
+      this.logger.error(`Error initiating Calendly OAuth: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to initiate Calendly OAuth');
+    }
+  }
+
+  /**
    * Point d'entrée pour initier le flux d'autorisation OAuth2 Calendly
    * Génère une URL d'autorisation et redirige l'utilisateur vers Calendly
    * 
@@ -24,7 +48,6 @@ export class CalendlyAuthController {
    * @param response Réponse pour redirection
    */
   @Get('authorize')
-  @UseGuards(JwtAuthGuard)
   async authorize(@Req() request, @Res() response: Response) {
     try {
       const userId = request.user.id;

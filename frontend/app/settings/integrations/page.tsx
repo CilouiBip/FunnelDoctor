@@ -23,6 +23,10 @@ const IntegrationsPage = () => {
     disconnect: disconnectYoutube,
     checkConnection: checkYoutubeConnection
   } = useYouTubeAuth();
+
+  // État pour la gestion de la connexion Calendly
+  const [isCalendlyConnected, setIsCalendlyConnected] = useState(false);
+  const [isCalendlyLoading, setIsCalendlyLoading] = useState(false);
   
   // États pour la gestion de la clé API
   const [userProfile, setUserProfile] = useState(null);
@@ -44,9 +48,10 @@ const IntegrationsPage = () => {
   const [isSavingEmailMarketingConfig, setIsSavingEmailMarketingConfig] = useState(false);
   const [emailMarketingConfigMessage, setEmailMarketingConfigMessage] = useState('');
 
-  // Gestion des paramètres URL pour le retour du callback YouTube
+  // Gestion des paramètres URL pour le retour du callback OAuth (YouTube et Calendly)
   useEffect(() => {
     const youtubeStatus = searchParams.get('youtube_status');
+    const calendlyStatus = searchParams.get('calendly_status');
     const errorMessage = searchParams.get('message');
     
     if (youtubeStatus === 'success') {
@@ -57,6 +62,18 @@ const IntegrationsPage = () => {
       router.replace('/settings/integrations', { scroll: false });
     } else if (youtubeStatus === 'error') {
       toast.error(`Erreur lors de la connexion YouTube: ${errorMessage || 'Veuillez réessayer'}`);
+      // Nettoyer l'URL
+      router.replace('/settings/integrations', { scroll: false });
+    }
+
+    if (calendlyStatus === 'success') {
+      toast.success('Connexion Calendly réussie !');
+      // Rafraîchir le statut de connexion
+      checkCalendlyConnection();
+      // Nettoyer l'URL
+      router.replace('/settings/integrations', { scroll: false });
+    } else if (calendlyStatus === 'error') {
+      toast.error(`Erreur lors de la connexion Calendly: ${errorMessage || 'Veuillez réessayer'}`);
       // Nettoyer l'URL
       router.replace('/settings/integrations', { scroll: false });
     }
@@ -76,6 +93,11 @@ const IntegrationsPage = () => {
         }
         
         setUserProfile(userData);
+        
+        // Vérifier si l'utilisateur a une intégration Calendly active
+        if (userData.integrations?.calendlyConnected) {
+          setIsCalendlyConnected(true);
+        }
       } catch (error) {
         console.error('Erreur lors de la récupération du profil:', error);
         setProfileError(error.message);
@@ -127,6 +149,76 @@ const IntegrationsPage = () => {
       setApiKeyMessage(`Erreur: ${error.message}`);
     } finally {
       setIsGeneratingApiKey(false);
+    }
+  };
+
+  // Vérification du statut de connexion Calendly
+  const checkCalendlyConnection = async () => {
+    setIsCalendlyLoading(true);
+    try {
+      // Appel à l'API pour vérifier la connexion (à implémenter côté backend)
+      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/status`);
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la vérification du statut Calendly');
+      }
+      
+      const data = await response.json();
+      setIsCalendlyConnected(data.connected);
+    } catch (error) {
+      console.error('Erreur lors de la vérification du statut Calendly:', error);
+      setIsCalendlyConnected(false);
+    } finally {
+      setIsCalendlyLoading(false);
+    }
+  };
+
+  // Connexion à Calendly via OAuth2
+  const connectCalendly = async () => {
+    setIsCalendlyLoading(true);
+    try {
+      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/initiate`, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error('Failed to get Calendly authorization URL');
+      }
+      const data = await response.json();
+      if (data.authorizeUrl) {
+        // Redirige vers l'URL fournie par le backend
+        window.location.href = data.authorizeUrl;
+      } else {
+        throw new Error('Authorization URL not received from backend');
+      }
+      // Note: setIsCalendlyLoading(false) n'est pas nécessaire car on quitte la page
+    } catch (error) {
+      console.error('Error connecting Calendly:', error);
+      // Affiche un message d'erreur à l'utilisateur
+      toast.error(`Erreur connexion Calendly: ${error.message}`);
+      setIsCalendlyLoading(false);
+    }
+  };
+
+  // Déconnexion de Calendly
+  const handleDisconnectCalendly = async () => {
+    setIsCalendlyLoading(true);
+    try {
+      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/revoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la déconnexion de Calendly');
+      }
+      
+      setIsCalendlyConnected(false);
+      toast.success('Déconnexion Calendly réussie !');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion de Calendly:', error);
+      toast.error(`Erreur lors de la déconnexion: ${error.message}`);
+    } finally {
+      setIsCalendlyLoading(false);
     }
   };
   
@@ -548,15 +640,54 @@ const IntegrationsPage = () => {
       {activeTab === 'calendly' && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center mb-4">
-            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full"></div> {/* Placeholder Icône */}
+            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full flex items-center justify-center text-white">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+            </div>
             <h2 className="text-xl font-semibold">Intégration Calendly</h2>
-            <span className="ml-auto px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs">Statut Indisponible</span>
+            {isCalendlyConnected ? (
+              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
+            ) : (
+              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            )}
           </div>
-          <p className="text-gray-600 mb-6">Connectez votre compte Calendly via OAuth2 pour synchroniser vos rendez-vous.</p>
-          {/* Le bouton Connecter/Déconnecter sera ajouté ici lors de l'implémentation OAuth2 */}
-          <div className="mt-4 p-4 border rounded bg-gray-50 text-center text-gray-500">
-            Logique de connexion OAuth2 à venir...
-          </div>
+          
+          <p className="text-gray-600 mb-6">Connectez votre compte Calendly via OAuth2 pour synchroniser vos rendez-vous et suivre les conversions.</p>
+          
+          {isCalendlyConnected ? (
+            <div className="mt-6">
+              <p className="text-gray-700 mb-4">
+                Votre compte Calendly est connecté à FunnelDoctor. Vous pouvez désormais suivre les rendez-vous
+                et générer des analyses sur vos leads.
+              </p>
+              
+              <button 
+                type="button" 
+                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
+                onClick={handleDisconnectCalendly}
+                disabled={isCalendlyLoading}
+              >
+                {isCalendlyLoading ? 'Chargement...' : 'Déconnecter Calendly'}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-6">
+              <p className="text-gray-700 mb-4">
+                En connectant votre compte Calendly, vous permettez à FunnelDoctor d'accéder à vos données de rendez-vous
+                pour analyser les performances et suivre les conversions.
+              </p>
+              
+              <button 
+                type="button" 
+                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
+                onClick={connectCalendly}
+                disabled={isCalendlyLoading}
+              >
+                {isCalendlyLoading ? 'Chargement...' : 'Connecter Calendly'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
