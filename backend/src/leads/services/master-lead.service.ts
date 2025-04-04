@@ -153,7 +153,7 @@ export class MasterLeadService {
           status: 'new',
           source_system: source,
           created_at: new Date(),
-          updated_at: new Date(),
+          // updated_at est géré automatiquement par la DB via DEFAULT NOW() et trigger
         };
         
         // Si email est fourni, l'ajouter au master lead pour compatibilité legacy
@@ -275,7 +275,7 @@ export class MasterLeadService {
           source_system: source,
           source_action: 'lead_stitching',
           created_at: new Date(),
-          updated_at: new Date(),
+          // updated_at est géré automatiquement par la DB
         })
         .select()
         .single();
@@ -321,7 +321,7 @@ export class MasterLeadService {
           last_seen_at: now,
           source: source,
           created_at: now,
-          updated_at: now,
+          // updated_at est géré automatiquement par la DB
         })
         .select()
         .single();
