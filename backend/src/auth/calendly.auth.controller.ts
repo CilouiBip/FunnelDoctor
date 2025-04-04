@@ -2,12 +2,12 @@ import { Controller, Get, Query, Req, Res, UseGuards, Logger } from '@nestjs/com
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CalendlyAuthService } from './calendly.auth.service';
+import { CalendlyAuthService } from '../auth/calendly.auth.service';
 
 /**
  * Contrôleur pour gérer l'authentification OAuth2 Calendly
  */
-@Controller('/api/auth/calendly')
+@Controller('/auth/calendly')
 export class CalendlyAuthController {
   private readonly logger = new Logger(CalendlyAuthController.name);
 
