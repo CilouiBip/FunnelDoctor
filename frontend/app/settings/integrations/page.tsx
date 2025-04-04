@@ -250,6 +250,12 @@ const IntegrationsPage = () => {
           >
             Stripe
           </button>
+          <button
+            className={`px-3 py-2 border-b-2 ${activeTab === 'calendly' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
+            onClick={() => setActiveTab('calendly')}
+          >
+            Calendly
+          </button>
 
         </nav>
       </div>
@@ -539,6 +545,21 @@ const IntegrationsPage = () => {
         </div>
       )}
       
+      {activeTab === 'calendly' && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center mb-4">
+            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full"></div> {/* Placeholder Icône */}
+            <h2 className="text-xl font-semibold">Intégration Calendly</h2>
+            <span className="ml-auto px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs">Statut Indisponible</span>
+          </div>
+          <p className="text-gray-600 mb-6">Connectez votre compte Calendly via OAuth2 pour synchroniser vos rendez-vous.</p>
+          {/* Le bouton Connecter/Déconnecter sera ajouté ici lors de l'implémentation OAuth2 */}
+          <div className="mt-4 p-4 border rounded bg-gray-50 text-center text-gray-500">
+            Logique de connexion OAuth2 à venir...
+          </div>
+        </div>
+      )}
+
       {activeTab === 'stripe' && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center mb-4">
