@@ -38,10 +38,6 @@ const IntegrationsPage = () => {
   const [isSavingStripeConfig, setIsSavingStripeConfig] = useState(false);
   const [stripeConfigMessage, setStripeConfigMessage] = useState('');
   
-  // États pour Calendly
-  const [calendlyPAT, setCalendlyPAT] = useState('');
-  const [isSavingCalendlyConfig, setIsSavingCalendlyConfig] = useState(false);
-  const [calendlyConfigMessage, setCalendlyConfigMessage] = useState('');
   
   // États pour Email Marketing (ActiveCampaign/ConvertKit)
   const [emailMarketingApiKey, setEmailMarketingApiKey] = useState('');
@@ -155,17 +151,14 @@ const IntegrationsPage = () => {
     setStripeConfigMessage('');
     
     try {
-      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
+      const response = await fetchWithAuth(`${API_URL}/api/integrations/stripe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          service: 'stripe',
-          config: {
-            publishableKey: stripePublishableKey,
-            secretKey: stripeSecretKey
-          }
+          publishableKey: stripePublishableKey,
+          secretKey: stripeSecretKey
         })
       });
       
@@ -185,41 +178,6 @@ const IntegrationsPage = () => {
     }
   };
   
-  // Sauvegarde de la configuration Calendly
-  const handleSaveCalendlyConfig = async (e) => {
-    e.preventDefault();
-    setIsSavingCalendlyConfig(true);
-    setCalendlyConfigMessage('');
-    
-    try {
-      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          service: 'calendly',
-          config: {
-            personalAccessToken: calendlyPAT
-          }
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors de la sauvegarde du token Calendly');
-      }
-      
-      const data = await response.json();
-      console.log('[DEBUG] Réponse configuration Calendly:', data);
-      
-      setCalendlyConfigMessage('Token Calendly sauvegardé avec succès!');
-    } catch (error) {
-      console.error('Erreur lors de la sauvegarde du token Calendly:', error);
-      setCalendlyConfigMessage(`Erreur: ${error.message}`);
-    } finally {
-      setIsSavingCalendlyConfig(false);
-    }
-  };
   
   // Sauvegarde de la configuration Email Marketing (ActiveCampaign/ConvertKit)
   const handleSaveEmailMarketingConfig = async (e) => {
@@ -228,16 +186,14 @@ const IntegrationsPage = () => {
     setEmailMarketingConfigMessage('');
     
     try {
-      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
+      const response = await fetchWithAuth(`${API_URL}/api/integrations/email-marketing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          service: 'email_marketing',
-          config: {
-            apiKey: emailMarketingApiKey
-          }
+          apiKey: emailMarketingApiKey,
+          type: 'ac' // Valeur par défaut pour ActiveCampaign
         })
       });
       
@@ -294,12 +250,7 @@ const IntegrationsPage = () => {
           >
             Stripe
           </button>
-          <button 
-            className={`px-3 py-2 border-b-2 ${activeTab === 'calendly' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
-            onClick={() => setActiveTab('calendly')}
-          >
-            Calendly
-          </button>
+
         </nav>
       </div>
       
@@ -664,74 +615,7 @@ const IntegrationsPage = () => {
         </div>
       )}
       
-      {activeTab === 'calendly' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center mb-4">
-            <div className="h-8 w-8 mr-3 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold">Intégration Calendly</h2>
-            {userProfile?.integrations?.calendlyConnected && (
-              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
-            )}
-            {!userProfile?.integrations?.calendlyConnected && (
-              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
-            )}
-          </div>
-          
-          <p className="text-gray-600 mb-6">
-            Connectez Calendly pour suivre et analyser automatiquement les rendez-vous pris par vos leads
-            et mesurer les taux de conversion.
-          </p>
-          
-          <form onSubmit={handleSaveCalendlyConfig} className="space-y-4 mb-6">
-            <div>
-              <label htmlFor="calendlyPAT" className="block text-sm font-medium text-gray-700 mb-1">
-                Personal Access Token Calendly
-              </label>
-              <input
-                id="calendlyPAT"
-                type="password"
-                value={calendlyPAT}
-                onChange={(e) => setCalendlyPAT(e.target.value)}
-                className="w-full px-4 py-2 border rounded-md focus:ring-primary focus:border-primary"
-                placeholder="pft_live_..."
-                required
-              />
-            </div>
-            
-            <div>
-              <button
-                type="submit"
-                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isSavingCalendlyConfig}
-              >
-                {isSavingCalendlyConfig ? 'Sauvegarde en cours...' : 'Enregistrer le Token Calendly'}
-              </button>
-              
-              {calendlyConfigMessage && (
-                <p className={`mt-2 text-sm ${calendlyConfigMessage.includes('Erreur') ? 'text-red-500' : 'text-green-500'}`}>
-                  {calendlyConfigMessage}
-                </p>
-              )}
-            </div>
-          </form>
-          
-          <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 p-3 rounded-md text-amber-800 text-sm">
-              <strong>Comment obtenir votre Personal Access Token Calendly :</strong>
-              <ol className="list-decimal ml-5 mt-2 space-y-1">
-                <li>Connectez-vous à votre compte Calendly</li>
-                <li>Accédez à <a href="https://calendly.com/integrations/api_webhooks" target="_blank" rel="noreferrer" className="text-primary underline">Integrations &gt; API &amp; Webhooks</a></li>
-                <li>Générez un nouveau Personal Access Token</li>
-                <li>Copiez-le et collez-le dans le champ ci-dessus</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };

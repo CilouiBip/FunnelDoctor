@@ -2,12 +2,12 @@ import { Body, Controller, Post, UseGuards, Request, Logger } from '@nestjs/comm
 import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IntegrationsService } from './integrations.service';
-import { SaveCalendlyDto } from './dto/save-calendly.dto';
+
 import { SaveStripeDto } from './dto/save-stripe.dto';
 import { SaveAcCkDto } from './dto/save-ac-ck.dto';
 
 @ApiTags('integrations')
-@Controller('api/integrations')
+@Controller('integrations')
 @UseGuards(JwtAuthGuard) // Toutes les routes requ00e8rent l'authentification JWT
 @ApiBearerAuth()
 export class IntegrationsController {
@@ -15,16 +15,6 @@ export class IntegrationsController {
 
   constructor(private readonly integrationsService: IntegrationsService) {}
 
-  @Post('calendly')
-  @ApiOperation({ summary: 'Enregistre ou met u00e0 jour une intu00e9gration Calendly' })
-  @ApiResponse({ status: 201, description: 'Intu00e9gration enregistru00e9e avec succu00e8s' })
-  @ApiResponse({ status: 401, description: 'Non autoriu00e9' })
-  @ApiResponse({ status: 500, description: 'Erreur serveur interne' })
-  async saveCalendlyIntegration(@Request() req, @Body() dto: SaveCalendlyDto) {
-    this.logger.log(`Enregistrement de l'intu00e9gration Calendly pour l'utilisateur ${req.user.id}`);
-    const success = await this.integrationsService.saveCalendlyIntegration(req.user.id, dto);
-    return { success };
-  }
 
   @Post('stripe')
   @ApiOperation({ summary: 'Enregistre ou met u00e0 jour une intu00e9gration Stripe' })
