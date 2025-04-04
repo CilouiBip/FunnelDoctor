@@ -40,4 +40,8 @@ export class CreateTouchpointDto {
   @IsString()
   @IsOptional()
   source?: string;
+
+  @IsUUID(4)
+  @IsOptional()
+  user_id?: string; // Lié à l'utilisateur FunnelDoctor
 }
