@@ -196,6 +196,108 @@ export class CalendlyV2Service {
   }
 
   /**
+   * Configure un webhook Calendly pour un utilisateur après l'authentification OAuth2
+   * @param userId ID de l'utilisateur pour lequel créer le webhook
+   * @returns Résultat de la création du webhook
+   */
+  async setupWebhookForUser(userId: string) {
+    try {
+      this.logger.log(`Configuration du webhook Calendly pour l'utilisateur ${userId}`);
+      
+      // Récupérer les tokens OAuth2 de l'utilisateur
+      const config = await this.integrationsService.getIntegrationConfig(userId, 'calendly');
+      if (!config || !config.access_token) {
+        throw new Error('Intégration Calendly non configurée ou access_token manquant');
+      }
+      
+      // Préparer les en-têtes avec le token OAuth2
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.access_token}`
+      };
+      
+      // Récupérer les informations de l'utilisateur et de l'organisation Calendly
+      const { data: userData } = await firstValueFrom(
+        this.httpService.get(`${this.apiBaseUrl}/users/me`, { headers }).pipe(
+          catchError((error) => {
+            this.logger.error(`Erreur lors de la récupération des infos utilisateur: ${error.message}`, error.stack);
+            throw new Error(`Impossible de récupérer les informations utilisateur: ${error.response?.data?.message || error.message}`);
+          })
+        )
+      );
+      
+      const userUri = userData.resource.uri;
+      const organizationUri = userData.resource.current_organization;
+      
+      // Construire l'URL de callback pour le webhook
+      const baseUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:3001';
+      const callbackUrl = `${baseUrl}/api/webhooks/calendly-test?userId=${userId}`;
+      
+      // Définir les événements que nous voulons écouter
+      const events = ['invitee.created', 'invitee.canceled'];
+      
+      // Vérifier si un webhook existe déjà pour cette organisation
+      const { data: webhooks } = await firstValueFrom(
+        this.httpService.get(
+          `${this.apiBaseUrl}/webhook_subscriptions?organization=${organizationUri}&scope=organization`,
+          { headers }
+        ).pipe(
+          catchError((error) => {
+            this.logger.error(`Erreur lors de la liste des webhooks: ${error.message}`, error.stack);
+            throw new Error(`Impossible de lister les webhooks existants: ${error.response?.data?.message || error.message}`);
+          })
+        )
+      );
+      
+      // Supprimer les webhooks existants avant d'en créer un nouveau
+      if (webhooks && webhooks.collection && webhooks.collection.length > 0) {
+        for (const webhook of webhooks.collection) {
+          try {
+            await firstValueFrom(
+              this.httpService.delete(
+                `${this.apiBaseUrl}/webhook_subscriptions/${webhook.uri.split('/').pop()}`,
+                { headers }
+              )
+            );
+            this.logger.log(`Webhook existant supprimé: ${webhook.uri}`);
+          } catch (deleteError) {
+            this.logger.warn(`Impossible de supprimer le webhook existant: ${deleteError.message}`);
+            // Continuer malgré l'erreur
+          }
+        }
+      }
+      
+      // Créer le nouveau webhook
+      const payload = {
+        url: callbackUrl,
+        events,
+        organization: organizationUri,
+        user: userUri,
+        scope: 'organization'
+      };
+      
+      const { data } = await firstValueFrom(
+        this.httpService.post(
+          `${this.apiBaseUrl}/webhook_subscriptions`,
+          payload,
+          { headers }
+        ).pipe(
+          catchError((error) => {
+            this.logger.error(`Erreur lors de la création du webhook: ${error.message}`, error.stack);
+            throw new Error(`Impossible de créer le webhook: ${error.response?.data?.message || error.message}`);
+          })
+        )
+      );
+      
+      this.logger.log(`Webhook Calendly créé avec succès pour l'utilisateur ${userId}`);
+      return data;
+    } catch (error) {
+      this.logger.error(`Échec de la configuration du webhook Calendly: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
    * Récupère les détails d'un événement programmé
    * @param uuid UUID de l'événement programmé
    * @param userId ID de l'utilisateur pour récupérer sa clé API Calendly

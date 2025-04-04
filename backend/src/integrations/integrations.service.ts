@@ -4,6 +4,7 @@ import { EncryptionService } from './encryption/encryption.service';
 import { SaveCalendlyDto } from './dto/save-calendly.dto';
 import { SaveStripeDto } from './dto/save-stripe.dto';
 import { SaveAcCkDto } from './dto/save-ac-ck.dto';
+import { SaveOAuthDto } from './dto/save-oauth.dto';
 
 /**
  * Types d'intu00e9grations supportu00e9s par le service
@@ -171,6 +172,38 @@ export class IntegrationsService {
       return await this.saveIntegration(userId, dto.type, config);
     } catch (error) {
       this.logger.error(`Erreur lors de l'enregistrement de l'intu00e9gration ${dto.type}: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+  /**
+   * Enregistre ou met u00e0 jour une intu00e9gration OAuth2
+   * 
+   * @param userId ID de l'utilisateur
+   * @param integrationType Type d'intu00e9gration (ex: 'calendly', 'youtube')
+   * @param oauthData DTO contenant les tokens OAuth2 et mu00e9tadonnu00e9es
+   * @returns true si l'opu00e9ration a ru00e9ussi, false sinon
+   */
+  async saveOAuthIntegration(
+    userId: string,
+    integrationType: IntegrationType,
+    oauthData: SaveOAuthDto
+  ): Promise<boolean> {
+    try {
+      this.logger.log(`Enregistrement de l'intu00e9gration OAuth ${integrationType} pour l'utilisateur ${userId}`);
+      
+      // Pru00e9parer la configuration
+      const config = {
+        ...oauthData,
+        is_encrypted: false, // Pas besoin de chiffrer car ce sont du00e9ju00e0 des tokens OAuth su00e9curisu00e9s
+        updated_at: new Date().toISOString(),
+        type: 'oauth' // Indiquer que c'est une intu00e9gration OAuth et non API_KEY
+      };
+      
+      // Utiliser la mu00e9thode saveIntegration privu00e9e
+      return await this.saveIntegration(userId, integrationType, config);
+    } catch (error) {
+      this.logger.error(`Erreur lors de l'enregistrement de l'intu00e9gration OAuth ${integrationType}: ${error.message}`, error.stack);
       return false;
     }
   }
