@@ -107,6 +107,9 @@
     // Write visitor ID cookie
     document.cookie = `_fd_vid=${visitorId}; path=/; expires=${expires}; SameSite=Lax; Secure`;
     
+    // Écrire le visitorId dans first_utm_content pour compatibilité iClosed/Zapier
+    document.cookie = `first_utm_content=${visitorId}; path=/; expires=${expires}; SameSite=Lax; Secure`;
+    
     // List of UTM parameters to process
     const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
     
