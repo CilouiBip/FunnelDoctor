@@ -3,6 +3,7 @@ import { IclosedWebhookDto } from './dto/iclosed-webhook.dto';
 import { UsersService } from '../users/users.service';
 import { MasterLeadService } from '../leads/services/master-lead.service';
 import { TouchpointsService } from '../touchpoints/touchpoints.service';
+import { VisitorsService } from '../visitors/visitors.service';
 
 @Injectable()
 export class WebhooksService {
@@ -11,6 +12,7 @@ export class WebhooksService {
     private readonly usersService: UsersService,
     private readonly masterLeadService: MasterLeadService,
     private readonly touchpointsService: TouchpointsService,
+    private readonly visitorsService: VisitorsService,
   ) {}
 
   /**
@@ -36,6 +38,17 @@ export class WebhooksService {
     }
     
     this.logger.log(`User identified with API Key: ${data.apiKey}, userId: ${userId}`);
+    
+    // 1.5 S'assurer que le visiteur existe dans la table visitors avant de l'associer
+    // Cela évite l'erreur de clé étrangère lors de l'association du visitor_id au lead
+    if (data.visitorId) {
+      this.logger.log(`Creating or updating visitor: ${data.visitorId}`);
+      await this.visitorsService.createOrUpdate({
+        visitor_id: data.visitorId,
+        // Données minimales requises pour créer un visiteur
+        metadata: { source: 'iclosed_webhook' }
+      });
+    }
     
     // 2. Créer ou récupérer le master lead avec les informations disponibles
     const masterLead = await this.masterLeadService.findOrCreateMasterLead(

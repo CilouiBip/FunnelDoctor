@@ -4,12 +4,14 @@ import { WebhooksService } from './webhooks.service';
 import { UsersModule } from '../users/users.module';
 import { LeadsModule } from '../leads/leads.module';
 import { TouchpointsModule } from '../touchpoints/touchpoints.module';
+import { VisitorsModule } from '../visitors/visitors.module';
 
 @Module({
   imports: [
     UsersModule,
     LeadsModule,
-    TouchpointsModule
+    TouchpointsModule,
+    VisitorsModule
   ],
   controllers: [WebhooksController],
   providers: [Logger, WebhooksService],
