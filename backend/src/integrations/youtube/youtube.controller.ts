@@ -93,14 +93,14 @@ export class YouTubeController {
     // Handle OAuth errors
     if (error) {
       this.logger.error(`OAuth error: ${error}`);
-      const redirectUrl = `${frontendUrl}/dashboard/youtube?status=error&message=${encodeURIComponent(error)}`;
+      const redirectUrl = `${frontendUrl}/settings/integrations?youtube_status=error&message=${encodeURIComponent(error)}`;
       this.logger.log(`Manual redirect to: ${redirectUrl}`);
       return res.redirect(302, redirectUrl);
     }
     
     // Validate required parameters
     if (!code || !state) {
-      const redirectUrl = `${frontendUrl}/dashboard/youtube?status=error&message=${encodeURIComponent('Missing required parameters')}`;
+      const redirectUrl = `${frontendUrl}/settings/integrations?youtube_status=error&message=${encodeURIComponent('Missing required parameters')}`;
       this.logger.log(`Manual redirect to: ${redirectUrl}`);
       return res.redirect(302, redirectUrl);
     }
@@ -143,19 +143,19 @@ export class YouTubeController {
         
         // Inclure le token dans les paramètres de redirection (dans un hash fragment pour plus de sécurité)
         const tokenParam = userToken ? `#token=${encodeURIComponent(userToken)}` : '';
-        const redirectUrl = `${frontendUrl}/dashboard/video?youtube_connected=true${tokenParam}`;
+        const redirectUrl = `${frontendUrl}/settings/integrations?youtube_status=success${tokenParam}`;
         
         this.logger.log(`Redirection vers: ${redirectUrl.split('#')[0]} (avec token JWT: ${userToken ? 'oui' : 'non'})`);
         this.logger.log(`État de l'authentification YouTube: intégration réussie pour l'utilisateur ${result.userId}`);
         return res.redirect(302, redirectUrl);
       } else {
-        const redirectUrl = `${frontendUrl}/dashboard/video?status=error&message=${encodeURIComponent(result.error || 'Unknown error')}`;
+        const redirectUrl = `${frontendUrl}/settings/integrations?youtube_status=error&message=${encodeURIComponent(result.error || 'Unknown error')}`;
         this.logger.log(`Redirection vers: ${redirectUrl} (état: erreur)`);
         return res.redirect(302, redirectUrl);
       }
     } catch (error) {
       this.logger.error(`Callback error: ${error.message}`);
-      const redirectUrl = `${frontendUrl}/dashboard/video?status=error&message=${encodeURIComponent('Internal server error')}`;
+      const redirectUrl = `${frontendUrl}/settings/integrations?youtube_status=error&message=${encodeURIComponent('Internal server error')}`;
       this.logger.log(`Redirection vers: ${redirectUrl} (état: erreur interne)`);
       return res.redirect(302, redirectUrl);
     }

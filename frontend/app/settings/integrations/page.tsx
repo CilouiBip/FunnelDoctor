@@ -2,47 +2,86 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { getCurrentUser, fetchWithAuth } from '@/lib/services/auth.service';
+import { toast } from 'react-hot-toast';
+import { useYouTubeAuth } from '@/hooks/useYouTubeAuth';
+
+// URL de base de l'API
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const IntegrationsPage = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('youtube');
-  const [isConnectingYoutube, setIsConnectingYoutube] = useState(false);
   
-  // u00c9tats pour la gestion de la clu00e9 API
+  // Utilisation du hook useYouTubeAuth pour gérer la connexion YouTube
+  const { 
+    isConnected: isYoutubeConnected, 
+    isLoading: isYoutubeLoading, 
+    connect: connectYoutube, 
+    disconnect: disconnectYoutube,
+    checkConnection: checkYoutubeConnection
+  } = useYouTubeAuth();
+  
+  // États pour la gestion de la clé API
   const [userProfile, setUserProfile] = useState(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
   const [apiKeyMessage, setApiKeyMessage] = useState('');
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  
+  // États pour Stripe
+  const [stripePublishableKey, setStripePublishableKey] = useState('');
+  const [stripeSecretKey, setStripeSecretKey] = useState('');
+  const [isSavingStripeConfig, setIsSavingStripeConfig] = useState(false);
+  const [stripeConfigMessage, setStripeConfigMessage] = useState('');
+  
+  // États pour Calendly
+  const [calendlyPAT, setCalendlyPAT] = useState('');
+  const [isSavingCalendlyConfig, setIsSavingCalendlyConfig] = useState(false);
+  const [calendlyConfigMessage, setCalendlyConfigMessage] = useState('');
+  
+  // États pour Email Marketing (ActiveCampaign/ConvertKit)
+  const [emailMarketingApiKey, setEmailMarketingApiKey] = useState('');
+  const [isSavingEmailMarketingConfig, setIsSavingEmailMarketingConfig] = useState(false);
+  const [emailMarketingConfigMessage, setEmailMarketingConfigMessage] = useState('');
 
-  const handleConnectYoutube = () => {
-    setIsConnectingYoutube(true);
-    // Redirection vers l'endpoint backend qui initie le flux OAuth Google
-    window.location.href = '/api/auth/youtube/authorize';
-    // Note: Le setIsConnectingYoutube(false) n'arrivera jamais car on quitte la page
-  };
+  // Gestion des paramètres URL pour le retour du callback YouTube
+  useEffect(() => {
+    const youtubeStatus = searchParams.get('youtube_status');
+    const errorMessage = searchParams.get('message');
+    
+    if (youtubeStatus === 'success') {
+      toast.success('Connexion YouTube réussie !');
+      // Rafraîchir le statut de connexion
+      checkYoutubeConnection();
+      // Nettoyer l'URL
+      router.replace('/settings/integrations', { scroll: false });
+    } else if (youtubeStatus === 'error') {
+      toast.error(`Erreur lors de la connexion YouTube: ${errorMessage || 'Veuillez réessayer'}`);
+      // Nettoyer l'URL
+      router.replace('/settings/integrations', { scroll: false });
+    }
+  }, [searchParams, router, checkYoutubeConnection]);
 
-  // Ru00e9cupu00e9ration du profil utilisateur (incluant la clu00e9 API)
+  // Récupération du profil utilisateur (incluant la clé API)
   useEffect(() => {
     const fetchUserProfile = async () => {
       setIsLoadingProfile(true);
       setProfileError(null);
       try {
-        const response = await fetch('/api/users/me', {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include', // Pour inclure les cookies d'authentification
-        });
+        // Utilisation du service d'authentification pour récupérer le profil utilisateur
+        const userData = await getCurrentUser();
         
-        if (!response.ok) {
-          throw new Error('Erreur lors de la ru00e9cupu00e9ration du profil');
+        if (!userData) {
+          throw new Error('Erreur lors de la récupération du profil');
         }
         
-        const data = await response.json();
-        setUserProfile(data);
+        setUserProfile(userData);
       } catch (error) {
-        console.error('Erreur lors de la ru00e9cupu00e9ration du profil:', error);
+        console.error('Erreur lors de la récupération du profil:', error);
         setProfileError(error.message);
       } finally {
         setIsLoadingProfile(false);
@@ -52,39 +91,50 @@ const IntegrationsPage = () => {
     fetchUserProfile();
   }, []);
   
-  // Gu00e9nu00e9ration d'une nouvelle clu00e9 API
+  // Génération d'une nouvelle clé API
   const handleGenerateApiKey = async () => {
     setIsGeneratingApiKey(true);
     setApiKeyMessage('');
     
     try {
-      const response = await fetch('/api/users/me/api-key', {
+      // Utilisation de fetchWithAuth au lieu de fetch direct
+      const response = await fetchWithAuth(`${API_URL}/api/users/me/api-key`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        }
+        // fetchWithAuth ajoutera automatiquement le header Authorization
       });
       
       if (!response.ok) {
-        throw new Error('Erreur lors de la gu00e9nu00e9ration de la clu00e9 API');
+        throw new Error('Erreur lors de la génération de la clé API');
       }
       
       const data = await response.json();
-      setUserProfile(prev => ({
-        ...prev,
-        apiKey: data.apiKey
-      }));
-      setApiKeyMessage('Clu00e9 API gu00e9nu00e9ru00e9e avec succu00e8s !');
+      console.log('[DEBUG] Structure réponse API:', JSON.stringify(data, null, 2));
+      
+      // Accès à la propriété apiKey imbriquée dans l'objet data.data
+      const apiKey = data.data?.apiKey;
+      console.log('[DEBUG] Clé API normalisée:', apiKey);
+      
+      // Mise à jour de userProfile avec la clé API normalisée
+      setUserProfile(prev => {
+        const updatedProfile = { ...prev, apiKey };
+        console.log('[DEBUG] userProfile mis à jour:', updatedProfile);
+        return updatedProfile;
+      });
+      
+      setApiKeyMessage('Clé API générée avec succès !');
+      // L'alerte a été supprimée pour éviter les problèmes de synchronisation
     } catch (error) {
-      console.error('Erreur lors de la gu00e9nu00e9ration de la clu00e9 API:', error);
+      console.error('Erreur lors de la génération de la clé API:', error);
       setApiKeyMessage(`Erreur: ${error.message}`);
     } finally {
       setIsGeneratingApiKey(false);
     }
   };
   
-  // Copie de la clu00e9 API dans le presse-papiers
+  // Copie de la clé API dans le presse-papiers
   const handleCopyApiKey = () => {
     if (userProfile?.apiKey) {
       navigator.clipboard.writeText(userProfile.apiKey)
@@ -95,6 +145,115 @@ const IntegrationsPage = () => {
         .catch(err => {
           console.error('Erreur lors de la copie:', err);
         });
+    }
+  };
+  
+  // Sauvegarde de la configuration Stripe
+  const handleSaveStripeConfig = async (e) => {
+    e.preventDefault();
+    setIsSavingStripeConfig(true);
+    setStripeConfigMessage('');
+    
+    try {
+      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          service: 'stripe',
+          config: {
+            publishableKey: stripePublishableKey,
+            secretKey: stripeSecretKey
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la sauvegarde des clés Stripe');
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] Réponse configuration Stripe:', data);
+      
+      setStripeConfigMessage('Configuration Stripe sauvegardée avec succès!');
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde des clés Stripe:', error);
+      setStripeConfigMessage(`Erreur: ${error.message}`);
+    } finally {
+      setIsSavingStripeConfig(false);
+    }
+  };
+  
+  // Sauvegarde de la configuration Calendly
+  const handleSaveCalendlyConfig = async (e) => {
+    e.preventDefault();
+    setIsSavingCalendlyConfig(true);
+    setCalendlyConfigMessage('');
+    
+    try {
+      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          service: 'calendly',
+          config: {
+            personalAccessToken: calendlyPAT
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la sauvegarde du token Calendly');
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] Réponse configuration Calendly:', data);
+      
+      setCalendlyConfigMessage('Token Calendly sauvegardé avec succès!');
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde du token Calendly:', error);
+      setCalendlyConfigMessage(`Erreur: ${error.message}`);
+    } finally {
+      setIsSavingCalendlyConfig(false);
+    }
+  };
+  
+  // Sauvegarde de la configuration Email Marketing (ActiveCampaign/ConvertKit)
+  const handleSaveEmailMarketingConfig = async (e) => {
+    e.preventDefault();
+    setIsSavingEmailMarketingConfig(true);
+    setEmailMarketingConfigMessage('');
+    
+    try {
+      const response = await fetchWithAuth(`${API_URL}/api/integrations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          service: 'email_marketing',
+          config: {
+            apiKey: emailMarketingApiKey
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la sauvegarde de la clé API Email Marketing');
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] Réponse configuration Email Marketing:', data);
+      
+      setEmailMarketingConfigMessage('Configuration Email Marketing sauvegardée avec succès!');
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde de la clé API Email Marketing:', error);
+      setEmailMarketingConfigMessage(`Erreur: ${error.message}`);
+    } finally {
+      setIsSavingEmailMarketingConfig(false);
     }
   };
 
@@ -112,10 +271,10 @@ const IntegrationsPage = () => {
             YouTube
           </button>
           <button 
-            className={`px-3 py-2 border-b-2 ${activeTab === 'activecampaign' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
-            onClick={() => setActiveTab('activecampaign')}
+            className={`px-3 py-2 border-b-2 ${activeTab === 'email_marketing' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
+            onClick={() => setActiveTab('email_marketing')}
           >
-            ActiveCampaign
+            Email Marketing
           </button>
           <button 
             className={`px-3 py-2 border-b-2 ${activeTab === 'iclose' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
@@ -129,6 +288,18 @@ const IntegrationsPage = () => {
           >
             Webhooks
           </button>
+          <button 
+            className={`px-3 py-2 border-b-2 ${activeTab === 'stripe' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
+            onClick={() => setActiveTab('stripe')}
+          >
+            Stripe
+          </button>
+          <button 
+            className={`px-3 py-2 border-b-2 ${activeTab === 'calendly' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'} font-medium`}
+            onClick={() => setActiveTab('calendly')}
+          >
+            Calendly
+          </button>
         </nav>
       </div>
       
@@ -138,54 +309,128 @@ const IntegrationsPage = () => {
           <div className="flex items-center mb-4">
             <img src="/assets/logos/youtube.svg" alt="YouTube" className="h-8 w-8 mr-3" />
             <h2 className="text-xl font-semibold">YouTube Integration</h2>
-            <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            {isYoutubeConnected ? (
+              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
+            ) : (
+              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            )}
           </div>
           
-          <p className="text-gray-600 mb-6">Connectez votre chaîne YouTube pour suivre les conversions depuis vos vidéos.</p>
+          <p className="text-gray-600 mb-6">Connectez votre chaîne YouTube pour suivre les conversions depuis vos vidéos et analyser les performances.</p>
           
-          <div className="mt-6">
-            <p className="text-gray-700 mb-4">
-              En connectant votre compte YouTube, vous permettez à FunnelDoctor d'accéder à vos données vidéo
-              pour analyser les performances et suivre les conversions.
-            </p>
-            
-            <button 
-              type="button" 
-              className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
-              onClick={handleConnectYoutube}
-              disabled={isConnectingYoutube}
-            >
-              {isConnectingYoutube ? 'Redirection...' : 'Connecter YouTube'}
-            </button>
-          </div>
+          {isYoutubeConnected ? (
+            <div className="mt-6">
+              <p className="text-gray-700 mb-4">
+                Votre compte YouTube est connecté à FunnelDoctor. Vous pouvez désormais suivre les conversions
+                depuis vos vidéos YouTube et analyser leurs performances.
+              </p>
+              
+              <button 
+                type="button" 
+                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
+                onClick={disconnectYoutube}
+                disabled={isYoutubeLoading}
+              >
+                {isYoutubeLoading ? 'Chargement...' : 'Déconnecter YouTube'}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-6">
+              <p className="text-gray-700 mb-4">
+                En connectant votre compte YouTube, vous permettez à FunnelDoctor d'accéder à vos données vidéo
+                pour analyser les performances et suivre les conversions.
+              </p>
+              
+              <button 
+                type="button" 
+                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
+                onClick={connectYoutube}
+                disabled={isYoutubeLoading}
+              >
+                {isYoutubeLoading ? 'Chargement...' : 'Connecter YouTube'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {activeTab === 'activecampaign' && (
+      {activeTab === 'email_marketing' && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center mb-4">
-            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">AC</div>
-            <h2 className="text-xl font-semibold">ActiveCampaign Integration</h2>
-            <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold">Intégration Email Marketing (ActiveCampaign/ConvertKit)</h2>
+            {userProfile?.integrations?.emailMarketingConnected && (
+              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
+            )}
+            {!userProfile?.integrations?.emailMarketingConnected && (
+              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            )}
           </div>
           
-          <p className="text-gray-600 mb-6">Connectez ActiveCampaign pour synchroniser vos leads et automatiser vos emails.</p>
+          <p className="text-gray-600 mb-6">
+            Connectez votre plateforme d'email marketing (ActiveCampaign ou ConvertKit) pour synchroniser vos leads 
+            et automatiser vos campagnes d'emails.
+          </p>
           
-          <form className="space-y-4">
+          <form onSubmit={handleSaveEmailMarketingConfig} className="space-y-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">API URL</label>
-              <input type="text" className="w-full px-4 py-2 border rounded-md" placeholder="https://youraccountname.api-us1.com" />
+              <label htmlFor="emailMarketingApiKey" className="block text-sm font-medium text-gray-700 mb-1">
+                Clé API (ActiveCampaign ou ConvertKit)
+              </label>
+              <input
+                id="emailMarketingApiKey"
+                type="password"
+                value={emailMarketingApiKey}
+                onChange={(e) => setEmailMarketingApiKey(e.target.value)}
+                className="w-full px-4 py-2 border rounded-md focus:ring-primary focus:border-primary"
+                placeholder="Votre clé API..."
+                required
+              />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-              <input type="password" className="w-full px-4 py-2 border rounded-md" />
+              <button
+                type="submit"
+                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSavingEmailMarketingConfig}
+              >
+                {isSavingEmailMarketingConfig ? 'Sauvegarde en cours...' : 'Enregistrer la clé API'}
+              </button>
+              
+              {emailMarketingConfigMessage && (
+                <p className={`mt-2 text-sm ${emailMarketingConfigMessage.includes('Erreur') ? 'text-red-500' : 'text-green-500'}`}>
+                  {emailMarketingConfigMessage}
+                </p>
+              )}
             </div>
-            
-            <button type="button" className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark">
-              Connecter ActiveCampaign
-            </button>
           </form>
+          
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-md text-amber-800 text-sm">
+            <strong>Comment obtenir votre clé API :</strong>
+            <div className="mt-2 space-y-3">
+              <div>
+                <strong>Pour ActiveCampaign :</strong>
+                <ol className="list-decimal ml-5 mt-1 space-y-1">
+                  <li>Connectez-vous à votre compte ActiveCampaign</li>
+                  <li>Accédez à <strong>Paramètres &gt; Développeur</strong></li>
+                  <li>Copiez votre API Key sous "Developer API Key"</li>
+                </ol>
+              </div>
+              
+              <div>
+                <strong>Pour ConvertKit :</strong>
+                <ol className="list-decimal ml-5 mt-1 space-y-1">
+                  <li>Connectez-vous à votre compte ConvertKit</li>
+                  <li>Accédez à <strong>Paramètres &gt; API</strong></li>
+                  <li>Copiez votre API Secret (ou créez-en un nouveau si nécessaire)</li>
+                </ol>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -216,23 +461,36 @@ const IntegrationsPage = () => {
               <>
                 <div className="bg-gray-50 p-4 rounded-md mb-4">
                   {userProfile?.apiKey ? (
-                    <div className="flex items-center">
-                      <code className="font-mono text-sm break-all flex-grow">{userProfile.apiKey}</code>
-                      <button 
-                        onClick={handleCopyApiKey}
-                        className="ml-2 text-primary hover:text-primary-dark"
-                        title="Copier la clé API"
-                      >
-                        {apiKeyCopied ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                          </svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                          </svg>
-                        )}
-                      </button>
+                    <div className="flex flex-col space-y-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="font-medium text-gray-700">Votre clé API:</label>
+                        <button 
+                          onClick={handleCopyApiKey}
+                          className="text-primary hover:text-primary-dark flex items-center"
+                          title="Copier la clé API"
+                        >
+                          {apiKeyCopied ? 'Copié!' : 'Copier'} 
+                          <span className="ml-1">
+                            {apiKeyCopied ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                              </svg>
+                            )}
+                          </span>
+                        </button>
+                      </div>
+                      
+                      <div className="bg-green-50 border-2 border-green-300 p-4 rounded-md font-mono text-base break-all shadow-sm">
+                        <span className="block text-center font-bold mb-2 text-green-700">Votre clé API</span>
+                        <div className="bg-white p-3 rounded border border-green-200 select-all">
+                          {userProfile.apiKey}
+                        </div>
+                        <p className="text-xs text-center mt-2 text-green-700">Cliquez sur la clé pour la sélectionner entièrement</p>
+                      </div>
                     </div>
                   ) : (
                     <p className="text-gray-600">Aucune clé API générée. Cliquez sur le bouton ci-dessous pour en créer une.</p>
@@ -326,6 +584,151 @@ const IntegrationsPage = () => {
             <button type="button" className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark">
               Ajouter un webhook sortant
             </button>
+          </div>
+        </div>
+      )}
+      
+      {activeTab === 'stripe' && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center mb-4">
+            <div className="h-8 w-8 mr-3 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold">Intégration Stripe</h2>
+            {userProfile?.integrations?.stripeConnected && (
+              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
+            )}
+            {!userProfile?.integrations?.stripeConnected && (
+              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            )}
+          </div>
+          
+          <p className="text-gray-600 mb-6">
+            Connectez votre compte Stripe pour traiter les paiements et suivre les conversions financières de vos leads.
+          </p>
+          
+          <form onSubmit={handleSaveStripeConfig} className="space-y-4 mb-6">
+            <div>
+              <label htmlFor="stripePublishableKey" className="block text-sm font-medium text-gray-700 mb-1">
+                Clé Publique Stripe (Publishable Key)
+              </label>
+              <input
+                id="stripePublishableKey"
+                type="text"
+                value={stripePublishableKey}
+                onChange={(e) => setStripePublishableKey(e.target.value)}
+                className="w-full px-4 py-2 border rounded-md focus:ring-primary focus:border-primary"
+                placeholder="pk_test_..."
+                required
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="stripeSecretKey" className="block text-sm font-medium text-gray-700 mb-1">
+                Clé Secrète Stripe (Secret Key)
+              </label>
+              <input
+                id="stripeSecretKey"
+                type="password"
+                value={stripeSecretKey}
+                onChange={(e) => setStripeSecretKey(e.target.value)}
+                className="w-full px-4 py-2 border rounded-md focus:ring-primary focus:border-primary"
+                placeholder="sk_test_..."
+                required
+              />
+            </div>
+            
+            <div>
+              <button
+                type="submit"
+                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSavingStripeConfig}
+              >
+                {isSavingStripeConfig ? 'Sauvegarde en cours...' : 'Enregistrer les clés Stripe'}
+              </button>
+              
+              {stripeConfigMessage && (
+                <p className={`mt-2 text-sm ${stripeConfigMessage.includes('Erreur') ? 'text-red-500' : 'text-green-500'}`}>
+                  {stripeConfigMessage}
+                </p>
+              )}
+            </div>
+          </form>
+          
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-md text-amber-800 text-sm">
+            <strong>Important :</strong> Vos clés Stripe sont chiffrées et stockées de manière sécurisée. 
+            Ne partagez jamais vos clés secrètes Stripe avec un tiers.
+          </div>
+        </div>
+      )}
+      
+      {activeTab === 'calendly' && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center mb-4">
+            <div className="h-8 w-8 mr-3 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold">Intégration Calendly</h2>
+            {userProfile?.integrations?.calendlyConnected && (
+              <span className="ml-auto px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connecté</span>
+            )}
+            {!userProfile?.integrations?.calendlyConnected && (
+              <span className="ml-auto px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Non connecté</span>
+            )}
+          </div>
+          
+          <p className="text-gray-600 mb-6">
+            Connectez Calendly pour suivre et analyser automatiquement les rendez-vous pris par vos leads
+            et mesurer les taux de conversion.
+          </p>
+          
+          <form onSubmit={handleSaveCalendlyConfig} className="space-y-4 mb-6">
+            <div>
+              <label htmlFor="calendlyPAT" className="block text-sm font-medium text-gray-700 mb-1">
+                Personal Access Token Calendly
+              </label>
+              <input
+                id="calendlyPAT"
+                type="password"
+                value={calendlyPAT}
+                onChange={(e) => setCalendlyPAT(e.target.value)}
+                className="w-full px-4 py-2 border rounded-md focus:ring-primary focus:border-primary"
+                placeholder="pft_live_..."
+                required
+              />
+            </div>
+            
+            <div>
+              <button
+                type="submit"
+                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSavingCalendlyConfig}
+              >
+                {isSavingCalendlyConfig ? 'Sauvegarde en cours...' : 'Enregistrer le Token Calendly'}
+              </button>
+              
+              {calendlyConfigMessage && (
+                <p className={`mt-2 text-sm ${calendlyConfigMessage.includes('Erreur') ? 'text-red-500' : 'text-green-500'}`}>
+                  {calendlyConfigMessage}
+                </p>
+              )}
+            </div>
+          </form>
+          
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-md text-amber-800 text-sm">
+              <strong>Comment obtenir votre Personal Access Token Calendly :</strong>
+              <ol className="list-decimal ml-5 mt-2 space-y-1">
+                <li>Connectez-vous à votre compte Calendly</li>
+                <li>Accédez à <a href="https://calendly.com/integrations/api_webhooks" target="_blank" rel="noreferrer" className="text-primary underline">Integrations &gt; API &amp; Webhooks</a></li>
+                <li>Générez un nouveau Personal Access Token</li>
+                <li>Copiez-le et collez-le dans le champ ci-dessus</li>
+              </ol>
+            </div>
           </div>
         </div>
       )}
