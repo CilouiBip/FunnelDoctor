@@ -310,7 +310,35 @@ export class MasterLeadService {
     try {
       const supabase = this.supabaseService.getAdminClient();
       
-      // Insérer le nouveau lead_visitor_id
+      // Vérifier d'abord si ce visitor_id existe déjà dans la table visitors
+      const { data: existingVisitor } = await supabase
+        .from('visitors')
+        .select('id')
+        .eq('visitor_id', visitorId)
+        .maybeSingle();
+      
+      // Si le visitor n'existe pas, on le crée d'abord pour respecter la foreign key
+      if (!existingVisitor) {
+        this.logger.log(`Le visitor_id ${visitorId} n'existe pas encore, création...(source: ${source})`);
+        const now = new Date();
+        const { error: visitorError } = await supabase
+          .from('visitors')
+          .insert({
+            visitor_id: visitorId,
+            first_seen_at: now,
+            last_seen_at: now,
+            metadata: { source: source },
+            created_at: now,
+            // updated_at est géré automatiquement par la DB
+          });
+        
+        if (visitorError) {
+          this.logger.error(`Erreur lors de la création du visitor: ${visitorError.message}`, visitorError);
+          throw new Error(`Impossible de créer le visitor pour respecter la foreign key: ${visitorError.message}`);
+        }
+      }
+      
+      // Maintenant on peut insérer le nouveau lead_visitor_id
       const now = new Date();
       const { data, error } = await supabase
         .from('lead_visitor_ids')
