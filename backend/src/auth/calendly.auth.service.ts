@@ -4,6 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { SaveOAuthDto } from '../integrations/dto/save-oauth.dto';
 import { CalendlyV2Service } from '../calendly-v2/calendly-v2.service';
 import { SupabaseService } from '../supabase/supabase.service';
 
@@ -82,6 +83,7 @@ export class CalendlyAuthService {
             state,
             user_id: userId,
             expires_at: expiresAt.toISOString(),
+            data: {} // Objet vide pour respecter la contrainte NOT NULL
           });
 
         if (error) {
@@ -215,17 +217,64 @@ export class CalendlyAuthService {
         const expiresAt = now + expiresIn;
         
         // Préparer l'objet DTO pour sauvegarder les tokens OAuth
-        const oauthData = {
+        const oauthData: SaveOAuthDto = {
           access_token: tokensData.access_token,
           refresh_token: tokensData.refresh_token,
           token_type: tokensData.token_type || 'Bearer',
           scope: tokensData.scope || this.scopes.join(' '),
           expires_in: expiresIn,
           expires_at: expiresAt,
-          refresh_token_expires_in: tokensData.refresh_token_expires_in
+          refresh_token_expires_in: tokensData.refresh_token_expires_in,
+          type: 'oauth',
+          is_encrypted: false,
+          updated_at: new Date().toISOString(),
+          // Les propriétés suivantes seront remplies après l'appel à l'API
+          user_uri: null,
+          organization_uri: null
         };
         
+        // Récupérer les informations de l'utilisateur Calendly pour obtenir les URIs
+        this.logger.log('Récupération des informations utilisateur Calendly...');
+        
+        try {
+          const { data } = await firstValueFrom(
+            this.httpService.get('https://api.calendly.com/users/me', {
+              headers: {
+                'Authorization': `${tokensData.token_type || 'Bearer'} ${tokensData.access_token}`
+              }
+            }).pipe(
+              catchError((error) => {
+                this.logger.error(`Erreur lors de la récupération des infos utilisateur Calendly: ${error.message}`, error.stack);
+                throw new Error(`User info fetch failed: ${error.response?.data?.error || error.message}`);
+              })
+            )
+          );
+          
+          // Ajouter les URIs Calendly si disponibles
+          if (data && data.resource) {
+            if (data.resource.uri) {
+              oauthData.user_uri = data.resource.uri;
+              this.logger.log(`URI utilisateur Calendly obtenue: ${oauthData.user_uri}`);
+            }
+            
+            if (data.resource.current_organization) {
+              oauthData.organization_uri = data.resource.current_organization;
+              this.logger.log(`URI organisation Calendly obtenue: ${oauthData.organization_uri}`);
+            }
+          }
+        } catch (userInfoError) {
+          this.logger.warn(`Impossible de récupérer les infos utilisateur Calendly: ${userInfoError.message}`);
+          // On continue même sans les URIs, pour ne pas bloquer le processus d'authentification
+        }
+        
+        // Les attributs supplémentaires sont déjà définis dans l'objet oauthData initial
+        
         // Sauvegarder les credentials pour cet utilisateur en utilisant la méthode publique
+        // Vérification que userId n'est pas null avant de l'utiliser
+        if (!userId) {
+          throw new Error('UserId non défini, impossible de sauvegarder les tokens OAuth');
+        }
+        
         const success = await this.integrationsService.saveOAuthIntegration(
           userId,
           'calendly',
@@ -272,6 +321,91 @@ export class CalendlyAuthService {
       return {
         redirectUrl: `${frontendUrl}/settings/integrations?calendly_status=error&message=${encodeURIComponent(error.message)}`
       };
+    }
+  }
+
+  /**
+   * Révoque l'intégration Calendly d'un utilisateur
+   * 
+   * @param userId ID de l'utilisateur dont l'intégration doit être révoquée
+   * @returns true si l'opération a réussi, false sinon
+   */
+  async revokeIntegration(userId: string): Promise<boolean> {
+    try {
+      this.logger.log(`Révocation de l'intégration Calendly pour l'utilisateur ${userId}`);
+      
+      // 1. Récupérer les informations d'intégration pour la révocation des tokens
+      const integrationConfig = await this.integrationsService.getIntegrationConfig(userId, 'calendly');
+      if (!integrationConfig) {
+        this.logger.log(`Aucune intégration Calendly à révoquer pour l'utilisateur ${userId}`);
+        return true; // Considérer comme un succès si aucune intégration n'existe
+      }
+      
+      // 2. Révoquer les tokens OAuth Calendly
+      if (integrationConfig.access_token) {
+        try {
+          // Vérification des variables de configuration requises
+          if (!this.clientId || !this.clientSecret) {
+            const missingParams: string[] = [];
+            if (!this.clientId) missingParams.push('CALENDLY_CLIENT_ID');
+            if (!this.clientSecret) missingParams.push('CALENDLY_CLIENT_SECRET');
+            
+            this.logger.warn(`Configuration incomplète pour la révocation OAuth: ${missingParams.join(', ')}`);
+          } else {
+            // Appel à l'API de révocation de Calendly
+            const tokenRequestBody = new URLSearchParams({
+              token: integrationConfig.access_token,
+              client_id: this.clientId,
+              client_secret: this.clientSecret
+            });
+            
+            await firstValueFrom(
+              this.httpService.post('https://auth.calendly.com/oauth/revoke', tokenRequestBody, {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                }
+              }).pipe(
+                catchError((error) => {
+                  // Log mais ne fait pas échouer l'opération complète si la révocation échoue
+                  this.logger.warn(`Erreur lors de la révocation du token Calendly: ${error.message}`, error.stack);
+                  return [];
+                })
+              )
+            );
+            this.logger.log(`Tokens OAuth Calendly révoqués avec succès pour l'utilisateur ${userId}`);
+          }
+        } catch (revokeError) {
+          // Log mais ne fait pas échouer l'opération complète
+          this.logger.warn(`Erreur lors de la révocation du token Calendly: ${revokeError.message}`, revokeError.stack);
+        }
+      }
+      
+      // 3. TODO: Si on implémente les webhooks dans le futur, les supprimer ici
+      // Pour le MVP, on peut simplement loguer un message
+      this.logger.log(`Note: La suppression des webhooks Calendly n'est pas implémentée pour le MVP`);
+      
+      // 4. Supprimer l'intégration de la base de données
+      console.log('[AUDIT REVOKE] Tentative de suppression pour', { userId });
+      
+      try {
+        const deleted = await this.integrationsService.deleteIntegration(userId, 'calendly');
+        console.log('[AUDIT REVOKE] Suppression DB pour', { userId }, 'TERMINÉE (apparemment sans erreur).');
+        
+        if (!deleted) {
+          this.logger.error(`Échec de la suppression de l'intégration Calendly pour l'utilisateur ${userId}`);
+          return false;
+        }
+      } catch (deleteError) {
+        console.error('[AUDIT REVOKE] ERREUR lors de la suppression DB pour', { userId }, deleteError);
+        this.logger.error(`Exception lors de la suppression de l'intégration Calendly: ${deleteError.message}`, deleteError.stack);
+        return false;
+      }
+      
+      this.logger.log(`Intégration Calendly révoquée avec succès pour l'utilisateur ${userId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Exception lors de la révocation de l'intégration Calendly: ${error.message}`, error.stack);
+      return false;
     }
   }
 }

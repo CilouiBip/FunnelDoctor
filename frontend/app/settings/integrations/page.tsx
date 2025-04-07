@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getCurrentUser, fetchWithAuth } from '@/lib/services/auth.service';
@@ -28,6 +28,8 @@ const IntegrationsPage = () => {
   const [isCalendlyConnected, setIsCalendlyConnected] = useState(false);
   const [isCalendlyLoading, setIsCalendlyLoading] = useState(false);
   
+  // Référence pour l'écouteur direct supprimée dans le cadre de la simplification radicale
+  
   // États pour la gestion de la clé API
   const [userProfile, setUserProfile] = useState(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -47,66 +49,169 @@ const IntegrationsPage = () => {
   const [emailMarketingApiKey, setEmailMarketingApiKey] = useState('');
   const [isSavingEmailMarketingConfig, setIsSavingEmailMarketingConfig] = useState(false);
   const [emailMarketingConfigMessage, setEmailMarketingConfigMessage] = useState('');
+  
+  // Vérification du statut de connexion Calendly
+  // Déplacé ici pour éviter l'erreur ReferenceError
+  const checkCalendlyConnection = async () => {
+    console.log('[CHECK_CALENDLY] Début de la vérification du statut Calendly');
+    setIsCalendlyLoading(true);
+    try {
+      // Appel à l'API pour vérifier la connexion
+      console.log('[CHECK_CALENDLY] Appel API à', `${API_URL}/api/auth/calendly/status`);
+      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/status`);
+      
+      // Log de la réponse complète pour débogage
+      console.log('[DEBUG STATUS] Réponse brute /status:', response);
+      
+      if (!response.ok) {
+        console.log('[CHECK_CALENDLY] Réponse API non-OK:', response.status, response.statusText);
+        throw new Error('Erreur lors de la vérification du statut Calendly');
+      }
+      
+      const responseBody = await response.json();
+      console.log('[DEBUG STATUS] Corps de la réponse JSON complet:', responseBody);
+      
+      // Chercher la propriété isConnected à différents niveaux de la structure
+      let isConnected = false;
+      
+      // Vérifier d'abord dans la structure standard d'API adaptée
+      if (responseBody?.data?.isConnected !== undefined) {
+        console.log('[DEBUG STATUS] isConnected trouvé dans responseBody.data.isConnected');
+        isConnected = !!responseBody.data.isConnected;
+      } 
+      // Ensuite vérifier directement dans responseBody.isConnected
+      else if (responseBody?.isConnected !== undefined) {
+        console.log('[DEBUG STATUS] isConnected trouvé dans responseBody.isConnected');
+        isConnected = !!responseBody.isConnected;
+      }
+      // Vérifier d'autres structures possibles
+      else if (responseBody?.data?.data?.isConnected !== undefined) {
+        console.log('[DEBUG STATUS] isConnected trouvé dans responseBody.data.data.isConnected');
+        isConnected = !!responseBody.data.data.isConnected;
+      }
+      else {
+        console.log('[DEBUG STATUS] Aucune propriété isConnected trouvée, recherche alternative dans le corps de la réponse');
+        // Log de toutes les clés disponibles pour faciliter le débogage
+        console.log('[DEBUG STATUS] Clés disponibles dans responseBody:', Object.keys(responseBody));
+        if (responseBody?.data) console.log('[DEBUG STATUS] Clés dans responseBody.data:', Object.keys(responseBody.data));
+        
+        // Fallback à false
+        isConnected = false;
+      }
+      
+      console.log('[CHECK_CALENDLY] Statut de connexion final déterminé:', isConnected);
+      console.log('[CHECK_CALENDLY] Ancien état isCalendlyConnected:', isCalendlyConnected);
+      
+      setIsCalendlyConnected(isConnected);
+      console.log('[CHECK_CALENDLY] Nouvel état isCalendlyConnected défini à:', isConnected);
+    } catch (error) {
+      console.error('[CHECK_CALENDLY] Erreur lors de la vérification du statut Calendly:', error);
+      setIsCalendlyConnected(false);
+      console.log('[CHECK_CALENDLY] État isCalendlyConnected défini à false en raison de l\'erreur');
+    } finally {
+      setIsCalendlyLoading(false);
+      console.log('[CHECK_CALENDLY] Fin de la vérification, isCalendlyLoading défini à false');
+    }
+  };
 
   // Gestion des paramètres URL pour le retour du callback OAuth (YouTube et Calendly)
   useEffect(() => {
+    // Log de tous les paramètres d'URL pour le débogage
+    console.log('[URL PARAMS] Tous les paramètres URL au chargement:', 
+      Object.fromEntries([...searchParams.entries()]));
+    
     const youtubeStatus = searchParams.get('youtube_status');
     const calendlyStatus = searchParams.get('calendly_status');
     const errorMessage = searchParams.get('message');
     
+    console.log('[URL PARAMS] youtube_status:', youtubeStatus);
+    console.log('[URL PARAMS] calendly_status:', calendlyStatus);
+    console.log('[URL PARAMS] message d\'erreur:', errorMessage);
+    
     if (youtubeStatus === 'success') {
+      console.log('[YOUTUBE CALLBACK] Succès détecté, toast affiché');
       toast.success('Connexion YouTube réussie !');
       // Rafraîchir le statut de connexion
+      console.log('[YOUTUBE CALLBACK] Appel à checkYoutubeConnection()');
       checkYoutubeConnection();
       // Nettoyer l'URL
+      console.log('[YOUTUBE CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
     } else if (youtubeStatus === 'error') {
+      console.log('[YOUTUBE CALLBACK] Erreur détectée, toast affiché');
       toast.error(`Erreur lors de la connexion YouTube: ${errorMessage || 'Veuillez réessayer'}`);
       // Nettoyer l'URL
+      console.log('[YOUTUBE CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
     }
 
     if (calendlyStatus === 'success') {
+      console.log('[CALENDLY CALLBACK] Succès détecté, toast affiché');
       toast.success('Connexion Calendly réussie !');
+      // Log l'état avant la vérification
+      console.log('[CALENDLY CALLBACK] État Calendly avant vérification:', isCalendlyConnected);
       // Rafraîchir le statut de connexion
+      console.log('[CALENDLY CALLBACK] Appel à checkCalendlyConnection()');
       checkCalendlyConnection();
       // Nettoyer l'URL
+      console.log('[CALENDLY CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
     } else if (calendlyStatus === 'error') {
+      console.log('[CALENDLY CALLBACK] Erreur détectée, toast affiché');
       toast.error(`Erreur lors de la connexion Calendly: ${errorMessage || 'Veuillez réessayer'}`);
       // Nettoyer l'URL
+      console.log('[CALENDLY CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
     }
-  }, [searchParams, router, checkYoutubeConnection]);
+  }, [searchParams, router, checkYoutubeConnection, isCalendlyConnected, checkCalendlyConnection]);
 
-  // Récupération du profil utilisateur (incluant la clé API)
+  // Nous déplacerons l'écouteur d'événements direct pour le bouton Calendly après la déclaration de connectCalendly
+  
+  // Récupération du profil utilisateur et vérification initiale des états de connexion
   useEffect(() => {
+    console.log('[INIT] Initialisation de la page des intégrations');
+    
     const fetchUserProfile = async () => {
+      console.log('[INIT] Début fetchUserProfile');
       setIsLoadingProfile(true);
       setProfileError(null);
       try {
         // Utilisation du service d'authentification pour récupérer le profil utilisateur
+        console.log('[INIT] Appel à getCurrentUser()');
         const userData = await getCurrentUser();
         
         if (!userData) {
+          console.log('[INIT] Aucune donnée utilisateur retournée');
           throw new Error('Erreur lors de la récupération du profil');
         }
         
+        console.log('[INIT] Données utilisateur reçues:', userData);
         setUserProfile(userData);
         
         // Vérifier si l'utilisateur a une intégration Calendly active
+        console.log('[INIT] Vérification des intégrations Calendly dans le profil:', 
+          userData.integrations?.calendlyConnected);
+        
         if (userData.integrations?.calendlyConnected) {
+          console.log('[INIT] Integration Calendly trouvée dans le profil, définition de isCalendlyConnected à true');
           setIsCalendlyConnected(true);
         }
+        
+        // Vérifier également l'état de connexion via l'API
+        console.log('[INIT] Vérification supplémentaire via l\'API Calendly');
+        checkCalendlyConnection();
       } catch (error) {
-        console.error('Erreur lors de la récupération du profil:', error);
+        console.error('[INIT] Erreur lors de la récupération du profil:', error);
         setProfileError(error.message);
       } finally {
         setIsLoadingProfile(false);
+        console.log('[INIT] Fin de fetchUserProfile, isLoadingProfile défini à false');
       }
     };
     
     fetchUserProfile();
+    console.log('[INIT] Appel à fetchUserProfile() complété');
+    
   }, []);
   
   // Génération d'une nouvelle clé API
@@ -152,51 +257,71 @@ const IntegrationsPage = () => {
     }
   };
 
-  // Vérification du statut de connexion Calendly
-  const checkCalendlyConnection = async () => {
-    setIsCalendlyLoading(true);
-    try {
-      // Appel à l'API pour vérifier la connexion (à implémenter côté backend)
-      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/status`);
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors de la vérification du statut Calendly');
-      }
-      
-      const data = await response.json();
-      setIsCalendlyConnected(data.connected);
-    } catch (error) {
-      console.error('Erreur lors de la vérification du statut Calendly:', error);
-      setIsCalendlyConnected(false);
-    } finally {
-      setIsCalendlyLoading(false);
-    }
-  };
 
-  // Connexion à Calendly via OAuth2
+
+  // Connexion à Calendly via OAuth2 - FETCH ROBUSTE
   const connectCalendly = async () => {
+    console.log('[FETCH CONNECT] connectCalendly DÉMARRÉE.');
     setIsCalendlyLoading(true);
+    let extractedUrl: string | null = null; // Variable pour stocker l'URL
+
     try {
-      const response = await fetchWithAuth(`${API_URL}/api/auth/calendly/initiate`, { method: 'GET' });
+      const apiUrl = `${API_URL}/api/auth/calendly/initiate`;
+      console.log('[FETCH CONNECT] Appel API GET vers:', apiUrl);
+      
+      const response = await fetchWithAuth(apiUrl, { method: 'GET' });
+      console.log('[FETCH CONNECT] Réponse API reçue. Statut:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to get Calendly authorization URL');
+        const errorBody = await response.text(); 
+        console.error('[FETCH CONNECT] ERREUR API:', response.status, response.statusText, errorBody);
+        throw new Error(`Erreur API (${response.status})`);
       }
-      const data = await response.json();
-      if (data.authorizeUrl) {
-        // Redirige vers l'URL fournie par le backend
-        window.location.href = data.authorizeUrl;
+
+      const responseBody = await response.json();
+      console.log('[FETCH CONNECT] Corps JSON Réponse API:', responseBody);
+
+      // === EXTRACTION ROBUSTE DE L'URL ===
+      // Logique pour trouver l'URL, peu importe la structure exacte retournée par le backend
+      if (responseBody?.data?.authorizationUrl && typeof responseBody.data.authorizationUrl === 'string') {
+          extractedUrl = responseBody.data.authorizationUrl;
+      } else if (responseBody?.authorizationUrl && typeof responseBody.authorizationUrl === 'string') {
+           extractedUrl = responseBody.authorizationUrl;
+      } else if (responseBody?.data?.authorizeUrl && typeof responseBody.data.authorizeUrl === 'string') {
+          extractedUrl = responseBody.data.authorizeUrl;
+      } else if (responseBody?.authorizeUrl && typeof responseBody.authorizeUrl === 'string') {
+           extractedUrl = responseBody.authorizeUrl;
+      } else if (responseBody?.data?.data?.authorizationUrl && typeof responseBody.data.data.authorizationUrl === 'string') {
+           extractedUrl = responseBody.data.data.authorizationUrl;
+      } // Ajouter d'autres cas si nécessaire basé sur ce que le backend renvoie VRAIMENT
+
+      console.log('[FETCH CONNECT] URL extraite TENTATIVE:', extractedUrl); 
+
+      // === VÉRIFICATION ET REDIRECTION ===
+      if (extractedUrl && extractedUrl.startsWith('https://auth.calendly.com')) { // Vérifie le début de l'URL
+        console.log('[FETCH CONNECT] URL VALIDE trouvée. REDIRECTION vers:', extractedUrl);
+        window.location.href = extractedUrl; 
+        // IMPORTANT: Ne pas mettre setIsCalendlyLoading(false) ici car la page va changer
+        return; // Sortir de la fonction après avoir lancé la redirection
       } else {
-        throw new Error('Authorization URL not received from backend');
+        // Si l'URL n'est pas trouvée ou invalide APRES une réponse OK de l'API
+        console.error('[FETCH CONNECT] ERREUR CRITIQUE: URL de redirection Calendly non trouvée ou invalide dans la réponse JSON !', responseBody);
+        toast.error("Erreur interne: Réponse du serveur invalide pour la connexion Calendly.");
+        // On arrive ici si l'URL n'est pas bonne, on arrête le loading
+        setIsCalendlyLoading(false); 
       }
-      // Note: setIsCalendlyLoading(false) n'est pas nécessaire car on quitte la page
+
     } catch (error) {
-      console.error('Error connecting Calendly:', error);
-      // Affiche un message d'erreur à l'utilisateur
-      toast.error(`Erreur connexion Calendly: ${error.message}`);
-      setIsCalendlyLoading(false);
-    }
+      console.error('[FETCH CONNECT] ERREUR dans fetch ou traitement:', error);
+      toast.error(`Erreur technique Calendly: ${error.message}`);
+      setIsCalendlyLoading(false); // Assurer l'arrêt du loading en cas d'erreur
+    } 
+    // Le finally n'est plus nécessaire ici car géré dans try/catch
+    console.log('[FETCH CONNECT] Fin de connectCalendly (normalement seulement si erreur).');
   };
 
+  // Pas besoin d'useEffect pour la gestion du bouton, tout est dans la fonction connectCalendly
+  
   // Déconnexion de Calendly
   const handleDisconnectCalendly = async () => {
     setIsCalendlyLoading(true);
@@ -682,9 +807,9 @@ const IntegrationsPage = () => {
                 type="button" 
                 className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
                 onClick={connectCalendly}
-                disabled={isCalendlyLoading}
+                disabled={isCalendlyLoading} 
               >
-                {isCalendlyLoading ? 'Chargement...' : 'Connecter Calendly'}
+                {isCalendlyLoading ? 'Connexion...' : 'Connecter Calendly'}
               </button>
             </div>
           )}

@@ -57,12 +57,11 @@ export class CalendlyV2WebhookController {
       // (actuellement désactivée comme dette technique acceptable)
 
       try {
-        // Déterminer le userId si possible (peut être extrait du payload ou être null/undefined)
-        // TODO: Implémenter ici la logique d'extraction de userId si nécessaire
-        const userId = undefined;
+        // La logique d'extraction du userId est maintenant dans le service CalendlyV2Service
+        // qui identifie le propriétaire du webhook à partir des détails du payload
 
-        // Appel UNIQUE au service refactorisé - toute la logique est maintenant dans le service
-        const result = await this.calendlyV2Service.processWebhookEvent(payload, userId);
+        // Appel au service qui gère la logique complète de traitement
+        const result = await this.calendlyV2Service.processWebhookEvent(payload);
 
         // Gestion de la réponse HTTP basée sur le résultat du service
         if (result.success) {

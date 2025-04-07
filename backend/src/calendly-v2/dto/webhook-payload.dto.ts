@@ -57,6 +57,10 @@ export class CalendlyScheduledEventDto {
   @IsString()
   @IsOptional()
   id?: string;
+  
+  @IsString()
+  @IsOptional()
+  organization?: string;
 }
 
 /**
@@ -90,6 +94,23 @@ export class CalendlyTrackingDto {
   @IsString()
   @IsOptional()
   salesforce_uuid?: string;
+}
+
+/**
+ * Structure pour l'utilisateur Calendly
+ */
+export class CalendlyUserDto {
+  @IsString()
+  @IsOptional()
+  uri?: string;
+  
+  @IsString()
+  @IsOptional()
+  email?: string;
+  
+  @IsString()
+  @IsOptional()
+  name?: string;
 }
 
 /**
@@ -142,6 +163,16 @@ export class CalendlyPayloadDto {
   @Type(() => CancellationDto)
   @IsOptional()
   cancellation?: CancellationDto; // Présent uniquement pour les événements invitee.canceled
+  
+  @IsString()
+  @IsOptional()
+  organization?: string;
+  
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CalendlyUserDto)
+  @IsOptional()
+  user?: CalendlyUserDto;
 }
 
 /**

@@ -1,8 +1,9 @@
-import { Controller, Get, Query, Req, Res, UseGuards, Logger, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Query, Req, Res, UseGuards, Logger, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CalendlyAuthService } from '../auth/calendly.auth.service';
+import { IntegrationsService } from '../integrations/integrations.service';
 
 /**
  * Contrôleur pour gérer l'authentification OAuth2 Calendly
@@ -14,6 +15,7 @@ export class CalendlyAuthController {
   constructor(
     private readonly calendlyAuthService: CalendlyAuthService,
     private readonly configService: ConfigService,
+    private readonly integrationsService: IntegrationsService,
   ) {}
 
   /**
@@ -101,6 +103,65 @@ export class CalendlyAuthController {
       // En cas d'erreur, rediriger vers la page d'intégrations avec un message d'erreur
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
       return response.redirect(`${frontendUrl}/settings/integrations?calendly_status=error&message=${encodeURIComponent(error.message)}`);
+    }
+  }
+
+  /**
+   * Endpoint pour vérifier le statut de la connexion Calendly d'un utilisateur
+   * 
+   * @param request Requête contenant l'utilisateur authentifié
+   * @returns Objet indiquant si l'utilisateur a une intégration Calendly active
+   */
+  @Get('status')
+  @UseGuards(JwtAuthGuard)
+  async getCalendlyStatus(@Req() request) {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('User not found in request');
+    }
+    
+    this.logger.log(`Vérification du statut d'intégration Calendly pour l'utilisateur: ${userId}`);
+    
+    try {
+      const isConnected = await this.integrationsService.getUserIntegrationStatus(userId, 'calendly');
+      this.logger.log(`Statut d'intégration Calendly pour l'utilisateur ${userId}: ${isConnected ? 'connecté' : 'déconnecté'}`);
+      
+      return { isConnected };
+    } catch (error) {
+      this.logger.error(`Erreur lors de la vérification du statut Calendly: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to check Calendly integration status');
+    }
+  }
+
+  /**
+   * Endpoint pour révoquer l'intégration Calendly d'un utilisateur
+   * 
+   * @param request Requête contenant l'utilisateur authentifié
+   * @returns Message de succès ou d'erreur
+   */
+  @Post('revoke')
+  @UseGuards(JwtAuthGuard)
+  async revokeCalendly(@Req() request) {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('User not found in request');
+    }
+    
+    this.logger.log(`Demande de révocation de l'intégration Calendly pour l'utilisateur: ${userId}`);
+    
+    try {
+      const success = await this.calendlyAuthService.revokeIntegration(userId);
+      
+      if (success) {
+        this.logger.log(`Intégration Calendly révoquée avec succès pour l'utilisateur ${userId}`);
+        return { success: true, message: 'Calendly integration revoked successfully.' };
+      } else {
+        this.logger.error(`Échec de la révocation de l'intégration Calendly pour l'utilisateur ${userId}`);
+        throw new InternalServerErrorException('Failed to revoke Calendly integration');
+      }
+    } catch (error) {
+      this.logger.error(`Erreur lors de la révocation de l'intégration Calendly: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to revoke Calendly integration: ' + error.message);
     }
   }
 }
