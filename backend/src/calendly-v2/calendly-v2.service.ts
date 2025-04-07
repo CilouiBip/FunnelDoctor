@@ -231,7 +231,8 @@ export class CalendlyV2Service {
       
       // Construire l'URL de callback pour le webhook
       const baseUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:3001';
-      const callbackUrl = `${baseUrl}/api/webhooks/calendly-test?userId=${userId}`;
+      const callbackUrl = `${baseUrl}/api/rdv/webhook-v2`;
+      this.logger.log(`URL de callback Calendly configurée: ${callbackUrl}`);
       
       // Définir les événements que nous voulons écouter
       const events = ['invitee.created', 'invitee.canceled'];
@@ -391,30 +392,104 @@ export class CalendlyV2Service {
 
   async processWebhookEvent(payload: CalendlyWebhookPayloadDto, userId?: string) {
     this.logger.log(`Traitement événement webhook Calendly: ${payload.event}`);
+    
+    // DEBUG: Ajout de logs détaillés pour analyser le payload
+    this.logger.log(`[DEBUG-WEBHOOK] Contenu partiel du payload: ${JSON.stringify(payload).substring(0, 500)}...`);
 
-    // Extraire l'ownerUri ici une seule fois si nécessaire pour trouver userId (à adapter selon ta logique réelle)
-    // Exemple placeholder : const ownerUri = payload.payload.organization; ou via un appel API?
-    // let resolvedUserId = userId;
-    // if (!resolvedUserId && ownerUri) {
-    //   resolvedUserId = await this.integrationsService.findUserIdByIntegrationDetails('calendly', { ownerUri });
-    //   if(!resolvedUserId) {
-    //      this.logger.error(`Could not resolve userId for Calendly event`);
-    //      return { success: false, message: 'Could not resolve user for event' };
-    //   }
-    // } else if (!resolvedUserId) {
-    //     // Si on n'a AUCUN moyen de trouver le userId, on ne peut pas traiter.
-    //      this.logger.error(`Cannot process Calendly webhook without userId`);
-    //      return { success: false, message: 'Cannot process webhook without user context' };
-    // }
+    // Extraire l'information d'organisation et/ou d'utilisateur pour identifier le propriétaire
+    let resolvedUserId: string | undefined = userId;
+    if (!resolvedUserId && payload.payload) {
+      // DEBUG: Analyser les chemins potentiels pour les URIs dans le payload
+      this.logger.log(`[DEBUG-WEBHOOK] Analyse de la structure payload.payload: ${JSON.stringify(payload.payload, null, 2).substring(0, 500)}...`);
+      
+      if (payload.payload.organization) {
+        this.logger.log(`[DEBUG-WEBHOOK] organization trouvée dans payload.payload: ${payload.payload.organization}`);
+      }
+      
+      if (payload.payload.scheduled_event?.organization) {
+        this.logger.log(`[DEBUG-WEBHOOK] organization trouvée dans payload.payload.scheduled_event: ${payload.payload.scheduled_event.organization}`);
+      }
+      
+      if (payload.payload.user?.uri) {
+        this.logger.log(`[DEBUG-WEBHOOK] user.uri trouvée dans payload.payload: ${payload.payload.user.uri}`);
+      }
+      
+      // Vérifier d'autres chemins potentiels pour les URIs
+      const anyPayload = payload as any;  // Cast to any pour éviter les erreurs TypeScript
+      if (anyPayload.created_by) {
+        this.logger.log(`[DEBUG-WEBHOOK] created_by trouvé dans payload: ${JSON.stringify(anyPayload.created_by)}`);
+      }
+      
+      // Vérifier si event_memberships existe (peut être absent du type)
+      const scheduledEvent = payload.payload.scheduled_event as any;
+      if (scheduledEvent?.event_memberships) {
+        this.logger.log(`[DEBUG-WEBHOOK] event_memberships trouvés: ${JSON.stringify(scheduledEvent.event_memberships)}`);
+      }
+
+      // Extraire l'URI de l'organisation depuis le payload (mêmes sources qu'avant, mais avec plus de logs)
+      const ownerUri = payload.payload.organization || 
+                      (payload.payload.scheduled_event && payload.payload.scheduled_event.organization) ||
+                      (payload.payload.user && payload.payload.user.uri);
+      
+      this.logger.log(`[DEBUG-WEBHOOK] ownerUri extrait: ${ownerUri}`);
+      
+      const detailsToSearch: Record<string, string> = {};
+      
+      // Préparer les détails de recherche avec logs
+      if (ownerUri) {
+        detailsToSearch.organization_uri = ownerUri;
+        this.logger.log(`[DEBUG-WEBHOOK] Ajout organization_uri à detailsToSearch: ${ownerUri}`);
+      }
+      
+      if (payload.payload.user && payload.payload.user.uri) {
+        detailsToSearch.user_uri = payload.payload.user.uri;
+        this.logger.log(`[DEBUG-WEBHOOK] Ajout user_uri à detailsToSearch: ${payload.payload.user.uri}`);
+      }
+      
+      // Ajouter d'autres sources potentielles d'URIs si elles existent
+      // Réutiliser la variable anyPayload déjà déclarée plus haut
+      if (anyPayload.created_by && anyPayload.created_by.uri) {
+        detailsToSearch.created_by_uri = anyPayload.created_by.uri;
+        this.logger.log(`[DEBUG-WEBHOOK] Ajout created_by_uri à detailsToSearch: ${anyPayload.created_by.uri}`);
+      }
+      
+      // Rechercher l'utilisateur dans la base de données si on a des détails
+      if (Object.keys(detailsToSearch).length > 0) {
+        this.logger.log(`[DEBUG-WEBHOOK] Recherche d'utilisateur avec les détails: ${JSON.stringify(detailsToSearch)}`);
+        try {
+          const foundUserId = await this.integrationsService.findUserIdByIntegrationDetails('calendly', detailsToSearch);
+          this.logger.log(`[DEBUG-WEBHOOK] Résultat de la recherche d'utilisateur: ${foundUserId || 'null'}`);
+          if (foundUserId) {
+            resolvedUserId = foundUserId;
+            this.logger.log(`UserId trouvé pour l'événement Calendly: ${resolvedUserId}`);
+          } else {
+            this.logger.warn(`[DEBUG-WEBHOOK] Aucun utilisateur trouvé avec les détails fournis`);
+          }
+        } catch (error) {
+          this.logger.error(`Erreur lors de la recherche du userId: ${error.message}`);
+        }
+      } else {
+        this.logger.warn(`[DEBUG-WEBHOOK] Aucun détail pour la recherche d'utilisateur n'a été extrait du payload`);
+      }
+      
+      if (!resolvedUserId) {
+        this.logger.error(`Could not resolve userId for Calendly event`);
+        return { success: false, message: 'Could not resolve user for event' };
+      }
+    } else if (!resolvedUserId) {
+      // Si on n'a AUCUN moyen de trouver le userId, on ne peut pas traiter.
+      this.logger.error(`Cannot process Calendly webhook without userId`);
+      return { success: false, message: 'Cannot process webhook without user context' };
+    }
 
     // Switch pour router vers les méthodes privées
     switch (payload.event) {
       case 'invitee.created':
         // IMPORTANT: Passer payload.payload (qui contient invitee, scheduled_event etc.) et le userId résolu
-        return this._handleInviteeCreated(payload.payload, userId); // Assure-toi que userId est bien passé
+        return this._handleInviteeCreated(payload.payload, resolvedUserId); 
       case 'invitee.canceled':
          // IMPORTANT: Passer payload.payload et le userId résolu
-        return this._handleInviteeCanceled(payload.payload, userId); // Assure-toi que userId est bien passé
+        return this._handleInviteeCanceled(payload.payload, resolvedUserId);
       default:
         this.logger.warn(`Type d'événement Calendly non géré: ${payload.event}`);
         return { success: true, message: `Événement ignoré (non géré): ${payload.event}` }; // Retourne succès pour que Calendly ne retente pas
