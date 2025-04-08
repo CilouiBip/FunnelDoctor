@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Logger, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AnalyticsQueryDto } from '../dto/analytics-query.dto';
@@ -28,8 +28,10 @@ export class AnalyticsController {
   @Get('events')
   @ApiOperation({ summary: 'Obtenir les analytics des événements' })
   @ApiResponse({ status: 200, description: 'Données analytiques des événements récupérées avec succès' })
-  async getEventAnalytics(@Query() query: AnalyticsQueryDto) {
+  async getEventAnalytics(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête d'analytics des événements reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.eventsAnalyticsService.getEventsAnalyticsSummary(query);
   }
 
@@ -39,8 +41,10 @@ export class AnalyticsController {
   @Get('events/category')
   @ApiOperation({ summary: 'Obtenir les événements par catégorie' })
   @ApiResponse({ status: 200, description: 'Événements par catégorie récupérés avec succès' })
-  async getEventsByCategory(@Query() query: AnalyticsQueryDto) {
+  async getEventsByCategory(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête d'analytics des événements par catégorie reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.eventsAnalyticsService.getEventsByCategory(query);
   }
 
@@ -50,8 +54,10 @@ export class AnalyticsController {
   @Get('events/source')
   @ApiOperation({ summary: 'Obtenir les événements par source' })
   @ApiResponse({ status: 200, description: 'Événements par source récupérés avec succès' })
-  async getEventsBySource(@Query() query: AnalyticsQueryDto) {
+  async getEventsBySource(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête d'analytics des événements par source reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.eventsAnalyticsService.getEventsBySource(query);
   }
 
@@ -61,8 +67,10 @@ export class AnalyticsController {
   @Get('events/timeline')
   @ApiOperation({ summary: 'Obtenir la timeline des événements' })
   @ApiResponse({ status: 200, description: 'Timeline des événements récupérée avec succès' })
-  async getEventsTimeline(@Query() query: AnalyticsQueryDto) {
+  async getEventsTimeline(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête de timeline des événements reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.eventsAnalyticsService.getEventsTimeline(query);
   }
 
@@ -72,8 +80,10 @@ export class AnalyticsController {
   @Get('funnel')
   @ApiOperation({ summary: 'Obtenir les analytics du funnel' })
   @ApiResponse({ status: 200, description: 'Données analytiques du funnel récupérées avec succès' })
-  async getFunnelAnalytics(@Query() query: AnalyticsQueryDto) {
+  async getFunnelAnalytics(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête d'analytics du funnel reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.funnelAnalyticsService.getFunnelAnalytics(query);
   }
 
@@ -83,8 +93,10 @@ export class AnalyticsController {
   @Get('leads')
   @ApiOperation({ summary: 'Obtenir les analytics des leads' })
   @ApiResponse({ status: 200, description: 'Données analytiques des leads récupérées avec succès' })
-  async getLeadsAnalytics(@Query() query: AnalyticsQueryDto) {
+  async getLeadsAnalytics(@Query() query: AnalyticsQueryDto, @Request() req) {
     this.logger.log(`Requête d'analytics des leads reçue: ${JSON.stringify(query)}`);
+    query.userId = req.user.id; // Extraction de l'ID utilisateur depuis la requête authentifiée
+    this.logger.debug(`User ID extrait du token: ${query.userId}`);
     return this.leadsAnalyticsService.getLeadsAnalytics(query);
   }
 }
