@@ -41,8 +41,14 @@ Notre priorité actuelle est d'implémenter une solution robuste de "Cookie + Pa
 ### Prochaines actions (alignées avec le plan du CTO) :
 
 #### Phase A : Vérification du Flow Complet (UTM → Calendly → Stripe)
-- ⬜ **Flow complet UTM → Landing** : Vérifier la capture des paramètres UTM et la génération du visitor_id
-- ⬜ **Flow Landing → Calendly** : Tester le bridging des liens Calendly avec visitor_id
+- ✅ **Flow complet UTM → Landing** : Vérifier la capture des paramètres UTM et la génération du visitor_id
+
+#### Bloc 1.3 : Validation Stitching `visitorId`
+- ❌ **MB-1.3.1 (Test Calendly via UTM)** : **ÉCHEC PARTIEL / DÉPRIORITISÉ** - Échec modification lien sur ConvertKit ; `utm_content` non transmis par webhook Calendly standard. Stratégie non fiable.
+- ✅ **MB-1.3.2 (Test Calendly via postMessage + Bridge API)** : Stratégie `postMessage` + `/api/bridge/associate` validée fonctionnellement (widget embed JS), capture `visitorId` sans email.
+- 📝 **Note stratégique Calendly** : Stratégie finale hybride. Priorité à `postMessage` + Bridge API (si widget embed JS utilisé). Fallback sur stitching via Email (webhook) + liaison `visitorId` via Opt-in/autres événements.
+
+#### Suite Phase A
 - ⬜ **Flow Calendly → Stripe** : Implémenter l'association visiteur-paiement via webhook Stripe
 - ⬜ **Test intégration complète** : Valider le flux entier de l'UTM jusqu'au paiement
 - ⬜ **Dashboard analytics** : Visualiser les taux de conversion à chaque étape du funnel

@@ -2,6 +2,39 @@
 
 Ce fichier sert à documenter les actions réalisées à chaque étape du développement du projet FunnelDoctor, conformément à la roadmap établie.
 
+## Tracking Calendly et Stratégie d'association Visitor-Lead
+
+### [08/04/2025] Investigation et Implémentation de la Stratégie Hybride Calendly
+
+- ✅ **Diagnostics et tests approfondis** sur le tracking des RDV Calendly
+  - Tests comparatifs entre ConvertKit et page HTML simple pour la propagation des paramètres UTM
+  - Tests de réception d'événements `postMessage` (`calendly.event_scheduled`) avec widget embed vs lien direct
+  - Analyse de la transmission des données de tracking via webhook Calendly standard (`invitee.created`)
+  - Validation du fonctionnement de l'endpoint `/api/bridge/associate` avec une version modifiée du DTO
+
+- ✅ **Corrections techniques**
+  - Mise à jour de la configuration CORS dans `main.ts` pour permettre les appels cross-origin
+  - Modification de `bridging.js` pour envoyer le `visitorId` même sans email (ajout de logs `FD-DEBUG:`)
+  - Modification du DTO `AssociateBridgeDto` pour rendre l'email optionnel (`@IsOptional()` au lieu de `@IsNotEmpty()`)
+  - Correction de la route dupliquée `/api/api/bridge/associate` vers `/api/bridge/associate` (en modifiant le décorateur `@Controller` de 'api/bridge' à 'bridge')
+  - Création d'une page de test `test-calendly-simple.html` pour validation isolée
+
+- ✅ **Validation des hypothèses**
+  - ❌ Échec : Modification de lien (`utm_content`) sur ConvertKit
+  - ✅ Succès : Modification de lien (`utm_content`) sur page HTML simple
+  - ❌ Échec : Réception `postMessage` via lien direct
+  - ✅ Succès : Réception `postMessage` via widget embed
+  - ❌ Échec : Transmission `utm_content` via webhook Calendly
+  - ✅ Succès : Appel `/api/bridge/associate` via `postMessage` (widget embed)
+
+- ✅ **Décision stratégique**
+  - Adoption d'une stratégie hybride pour maximiser la fiabilité du tracking
+  - Priorité à `postMessage` + Bridge API pour les widgets embed JavaScript
+  - Fallback sur stitching via Email + liaison `visitorId` par opt-in pour les liens directs et cas où `postMessage` échoue
+  - Création d'un document détaillé `CALENDLY_TRACKING_STRATEGY.md` expliquant l'approche complète
+  - Mise à jour de la roadmap pour refléter cette orientation stratégique
+
+
 ## Intégration YouTube OAuth et Bridging Multi-Email
 
 ### 1. Configuration Google Cloud et Variables d'Environnement
