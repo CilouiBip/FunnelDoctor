@@ -51,11 +51,27 @@ import { FunnelAnalyticsModule } from './funnel-analytics/funnel-analytics.modul
     IntegrationsModule,
     FunnelAnalyticsModule,
     DebugModule.register(),
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public'),
-      serveRoot: '/',
-      exclude: ['/api*'],
-    })
+    // DEBUG STATIC FILES PATH
+    (() => {
+      const staticPath = join(__dirname, '..', 'public');
+      console.log('[DEBUG STATIC PATH] rootPath configuré pour ServeStaticModule:', staticPath);
+      const testFilePath = join(staticPath, 'test-calendly-simple.html');
+      const fs = require('fs');
+      console.log('[DEBUG STATIC PATH] test-calendly-simple.html existe:', fs.existsSync(testFilePath));
+      console.log('[DEBUG STATIC PATH] Contenu du répertoire public:', fs.readdirSync(staticPath).join(', '));
+      return ServeStaticModule.forRoot({
+        rootPath: staticPath,
+        // Simplifier la configuration pour le debug
+        renderPath: '/',
+        serveStaticOptions: {
+          index: false,
+          extensions: ['html', 'js', 'css'],
+          cacheControl: false,
+          immutable: false,
+          maxAge: 0
+        }
+      });
+    })()
   ],
   controllers: [AppController],
   providers: [AppService],

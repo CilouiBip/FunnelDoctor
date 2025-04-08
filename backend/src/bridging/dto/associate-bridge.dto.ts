@@ -10,8 +10,8 @@ export class AssociateBridgeDto {
    * @example "user@example.com"
    */
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @IsOptional() // Email est maintenant optionnel
+  email?: string; // Type optionnel pour accepter null/undefined
 
   /**
    * Identifiant du visiteur à associer

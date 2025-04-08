@@ -27,12 +27,31 @@ Ce fichier sert à documenter les actions réalisées à chaque étape du dével
   - ❌ Échec : Transmission `utm_content` via webhook Calendly
   - ✅ Succès : Appel `/api/bridge/associate` via `postMessage` (widget embed)
 
-- ✅ **Décision stratégique**
-  - Adoption d'une stratégie hybride pour maximiser la fiabilité du tracking
-  - Priorité à `postMessage` + Bridge API pour les widgets embed JavaScript
-  - Fallback sur stitching via Email + liaison `visitorId` par opt-in pour les liens directs et cas où `postMessage` échoue
-  - Création d'un document détaillé `CALENDLY_TRACKING_STRATEGY.md` expliquant l'approche complète
-  - Mise à jour de la roadmap pour refléter cette orientation stratégique
+### [08/04/2025] Validation Finale de la Stratégie Calendly et Changement de Priorités
+
+- ✅ **Tests finaux sur la page HTML simple avec configuration corrigée**
+  - ✅ Succès : Démarrage du backend sur le port 3001 après résolution de l'erreur `EADDRINUSE`
+  - ✅ Succès : Événements `page_view` et `bridging_initialized` correctement enregistrés
+  - ✅ Succès : Modification de lien avec `utm_content` contenant le `visitorId` sur page HTML simple
+  - ✅ Succès : Réception de l'événement `postMessage` et appel à `/api/bridge/associate` avec le `visitorId`
+  - ❌ Confirmation : `utm_content` n'est définitivement pas transmis dans le webhook Calendly standard
+
+- ✅ **Décision stratégique finale (avec avis CTO)**
+  - Adoption définitive de la stratégie hybride en deux volets pour le MVP:
+    1. **Priorité absolue : Widget Embed JS + `postMessage` + Bridge API** pour les sites sous contrôle direct du client
+    2. **Fallback obligatoire : Stitching via Email + Opt-in** pour les liens directs et intégrations tierces
+  - Importance critique de la capture de l'email ET du `visitorId` lors de l'Opt-in pour assurer un stitching fiable
+  - Recommandation explicite aux clients d'utiliser le widget embed JavaScript plutôt que des liens directs
+
+- ✅ **Documentation complète**
+  - Enrichissement du document `CALENDLY_TRACKING_STRATEGY.md` avec les conclusions finales
+  - Mise à jour de la roadmap pour refléter cette orientation stratégique et les nouvelles priorités
+  - Planification des étapes d'amélioration post-MVP (question personnalisée, redirection)
+
+- ✅ **Nouvelles priorités immédiates**
+  - #1 : Correction des bugs de requêtes SQL dans les rapports analytics
+  - #2 : Résolution des problèmes de gestion des tokens YouTube OAuth
+  - #3 : Implémentation et validation du stitching via Opt-in
 
 
 ## Intégration YouTube OAuth et Bridging Multi-Email

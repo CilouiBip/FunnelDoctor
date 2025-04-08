@@ -1,169 +1,222 @@
-# FunnelDoctor - Roadmap de Développement (Version Avril 2025 - MVP v2.2 - Focus Analyse Custom)
+# FunnelDoctor - Roadmap Révisée MVP v4 (Focus iClosed & Analytics) - MISE À JOUR 08/04/2025
 
-**Document de Référence Principal**
+## Vision MVP Core Réaffirmée
 
-*(Basé sur le rapport d'état du 03/04/2025, les audits, et la clarification de la vision MVP)*
+**Objectif :** SaaS pour infopreneurs pour tracker **fiablement** leur funnel marketing/ventes (YT -> Optin -> **RDV iClosed/Calendly** -> Stripe), **résoudre le lead stitching** (emails/`visitorId`), permettre de **définir les étapes de LEUR funnel**, et obtenir des **KPIs et taux de conversion actionnables par source/vidéo**.
 
-## 1. Contexte et Vision (MVP Core)
+**Point Clé :** Le **"Lead Stitching"** est fondamental (tracker même lead malgré emails différents via `visitorId` ou autre). Analytics/KPIs sont **CORE** au MVP.
 
-**Objectif FunnelDoctor MVP :** Fournir aux infopreneurs une solution SaaS pour tracker de manière fiable leur funnel marketing et ventes organique (focus YouTube -> Opt-in -> RDV -> Paiement), **définir les étapes clés de LEUR funnel spécifique**, et visualiser les **taux de conversion et le revenu généré à chaque étape** via un dashboard analytique filtrable. La valeur réside dans l'identification précise des points forts/faibles du parcours client personnalisé.
+## État Actuel (Post Corrections Récentes - 08/04/2025)
 
-**Problème Principal Adressé :** Fragmentation des données ET impossibilité d'analyser la performance réelle d'un funnel spécifique (pas juste un modèle générique).
-
-**Proposition de Valeur Unique (MVP) :**
-1.  **Tracking Fiable & Stitching :** Collecte précise des touchpoints (page vue, optin, rdv, paiement) via snippet + webhooks, et liaison robuste au lead unique (MasterLead) via visitorId/email.
-2.  **Funnel Personnalisé :** Interface permettant à l'utilisateur de définir et ordonner les étapes clés de son propre funnel.
-3.  **Analyse Actionnable :** Dashboard "Funnel Analytics" visualisant l'entonnoir de conversion basé sur les étapes définies par l'utilisateur, avec KPIs clés (visiteurs, leads, RDV, ventes, CA, taux de conversion) et filtres (période, source).
-
-## 2. Stack Technique et Architecture
-
-*(Identique aux versions précédentes - NestJS, Next.js, Supabase, etc. Focus sur `FunnelStepsModule` et `FunnelAnalyticsModule` pour la logique custom)*
-
-## 3. Roadmap MVP - Implémentation par Micro-Blocs (MB)
-
----
-
-**(Prérequis : Base de code actuelle sur branche `feat/core-tracking-stitching` avec backend démarrant, et corrections iClosed/Clé API identifiées mais pas encore toutes commitées)**
-
-*   **MB-0.4 : Validation Finale Zapier (CTO)**
-    *   **Objectif :** Confirmer que l'action Webhook POST dans le Zap de test personnel (avec vraie clé API) ne renvoie PAS "Cannot POST" ou 404, mais une erreur 400 (Bad Request / Validation DTO échouée à cause du `visitorId` d'exemple invalide).
-    *   **Tâches :** Exécuter "Test Step" dans l'éditeur Zapier pour l'action Webhook POST (backend/ngrok doivent tourner).
-    *   **Mesure de Succès :** Réception d'une réponse HTTP 400 du backend FunnelDoctor dans Zapier.
-    *   **Priorité :** **BLOQUANTE** pour valider la communication Zapier->Backend.
-*   **MB-0.5 : Commit Final Corrections Backend (Windsurf)**
-    *   **Objectif :** Intégrer dans Git les dernières corrections backend validées.
-    *   **Tâches :** Commiter les modifications pour : `fix: Ensure visitor exists...`, `feat: Add migration file for touchpoints source...`, `refactor: Add optional source field...`, `feat: Add migration file for touchpoints user_id...`, `refactor: Add optional user_id field...`, `fix: Remove manual updated_at...`, `fix: Correctly access nested apiKey...`.
-    *   **Mesure de Succès :** Commits effectués avec les bons messages. Code propre sur la branche.
-    *   **Priorité :** Critique (après MB-0.4).
-*   **MB-0.6 : Création Branche Stable (Windsurf)**
-    *   **Objectif :** Sauvegarder l'état fonctionnel actuel.
-    *   **Tâches :** Créer et pusher `git branch feat/mvp-stable-base && git push origin feat/mvp-stable-base`.
-    *   **Mesure de Succès :** Branche créée et disponible sur le dépôt distant.
-    *   **Priorité :** Critique (après MB-0.5).
+*   ✅ Backend/Frontend démarrent.
+*   ✅ Auth utilisateur JWT fonctionne.
+*   ✅ Intégration Calendly OAuth: Connexion/Reconnexion, Stockage Tokens+URIs OK.
+*   ✅ Création Webhook Calendly V2: Configurée avec `/api/rdv/webhook-v2`.
+*   ✅ Réception Webhook Calendly: Reçu sur `/api/rdv/webhook-v2`.
+*   ✅ Résolution `userId` via Webhook Calendly: Fonctionne (utilise URIs stockées).
+*   ✅ Traitement complet Webhook Calendly (`invitee.created`): Correction FK `visitors`, ajout colonne `integration_type`, création `touchpoint` finale.
+*   ✅ Snippet JS: Existe (fonctionnalité de base `visitorId`, UTMs).
+*   ✅ Endpoints Webhook iClosed (`/api/webhooks/iclosed`) & Stripe (`/api/payments/webhook`): Existent (logique basique).
+*   ❓ Logique de Stitching: Existe (UTM, Bridge, Fallback) mais robustesse et configuration à valider (Comment UTM arrive? Comment Bridge est peuplé?).
+*   ❌ Définition Funnel Personnalisé (API/UI): Non fait.
+*   ❌ Calcul KPIs & Analytics Backend: Non fait.
+*   ❌ UI Analytics (Dashboard KPIs, Vue Funnel, Rapport par Source): Non fait.
+*   ❌ Sécurisation Webhooks (Signature): Non fait.
+*   ❌ Nettoyage Déconnexion (Suppression Webhook): Non fait.
 
 ---
 
-**Phase 1 : Finalisation Configuration Intégrations (Frontend)**
+## Roadmap Détaillée par Blocs & Micro-Blocs (MB)
 
-*   **MB-1.1 : Intégration Stripe (Frontend - Windsurf)**
-    *   **Objectif :** Permettre à l'utilisateur d'enregistrer ses clés API Stripe.
-    *   **Tâches :** Implémenter le formulaire (clé publique/secrète) et l'appel API (`POST /api/integrations/stripe` via `fetchWithAuth`) dans `/settings/integrations/page.tsx`. Gérer état chargement/succès/erreur. Afficher statut "Connecté".
-    *   **Tests (CTO Manuel) :** Entrer clés test, enregistrer. Vérifier logs backend (succès sauvegarde), vérifier statut "Connecté" après refresh.
-    *   **Mesure de Succès :** Sauvegarde des clés fonctionnelle, statut UI mis à jour.
-    *   **Priorité :** Haute.
-*   **MB-1.2 : Intégration Calendly OAuth (Frontend/Backend - Windsurf)** ✅
-    *   **Objectif :** Permettre à l'utilisateur de connecter son compte Calendly via le flux OAuth.
-    *   **Tâches TERMINÉES (07/04/2025) :** 
-        * Mise en place du flux OAuth Calendly complet (initiate, authorize, callback)
-        * Correction de la contrainte BD empêchant plusieurs utilisateurs d'avoir une intégration Calendly
-        * Amélioration de la fonction d'extraction d'URL d'autorisation avec logs détaillés
-        * Tests avec plusieurs comptes utilisateurs pour valider l'implémentation
-    *   **Mesure de Succès :** ✅ Connexion Calendly fonctionnelle, redirection OAuth réussie, statut UI correctement mis à jour.
-    *   **Priorité :** Haute.
-*   **MB-1.3 : Intégration Email Marketing (AC/CK) (Frontend - Windsurf)**
-    *   **Objectif :** Permettre à l'utilisateur d'enregistrer sa clé API AC ou CK.
-    *   **Tâches :** Implémenter formulaire (Clé API) et appel API (`POST /api/integrations/email-marketing` via `fetchWithAuth`) dans `/settings/integrations/page.tsx`. Gérer état/messages. Afficher statut "Connecté".
-    *   **Tests (CTO Manuel) :** Entrer clé test, enregistrer. Vérifier logs backend (si endpoint existe et gère), vérifier statut UI.
-    *   **Mesure de Succès :** Sauvegarde clé fonctionnelle (si backend OK), statut UI mis à jour.
-    *   **Priorité :** Moyenne (moins critique que Stripe/Calendly pour le flux E2E initial).
-*   **MB-1.4 : Intégration YouTube (Frontend - Windsurf)**
-    *   **Objectif :** Finaliser l'UI pour connecter/déconnecter YouTube et gérer le retour de callback.
-    *   **Tâches :** Implémenter l'utilisation de `useYouTubeAuth` pour afficher état/boutons. Implémenter la gestion des paramètres `?youtube_status=` dans l'URL pour afficher toast et rafraîchir état. Vérifier appel `connect()` et `disconnect()`. (Correction redirection callback backend déjà faite).
-    *   **Tests (CTO Manuel) :** Tester le cycle complet : Connecter -> Consentement Google -> Redirection vers Settings -> Toast Succès -> Statut "Connecté" -> Déconnecter -> Toast Succès -> Statut "Non connecté".
-    *   **Mesure de Succès :** Flux connexion/déconnexion YouTube fonctionnel et UI à jour.
-    *   **Priorité :** Haute.
+### **Phase 1 : Validation Complète du Tracking des Événements Clés**
 
----
+*(Objectif : Assurer que TOUS les touchpoints (Visite, Opt-in, RDV iClosed/Calendly, Paiement) sont capturés, correctement attribués à un utilisateur et à un lead, et enregistrés dans la DB sans erreur)*
 
-**Phase 2 : Définition du Funnel par l'Utilisateur**
+#### **Bloc 1.1 : Finalisation & Validation Webhook Calendly `invitee.created` (Priorité #1 Immédiate)**
 
-*   **MB-2.1 : Backend - API Funnel Steps (Audit & Ajustements - Windsurf)**
-    *   **Objectif :** Comprendre et si nécessaire, ajuster l'API `/api/funnel-steps` pour permettre la définition d'étapes basées sur les `event_type` des touchpoints.
-    *   **Tâches :** Auditer `FunnelStepsModule` (contrôleur, service, DTOs, entité). Confirmer que l'API permet de créer/MAJ/lister/ordonner des étapes avec au moins un `user_id`, un `label`, une `position`, et un `type` correspondant aux `event_type` clés (`page_view`, `optin`, `rdv_scheduled`, `payment_succeeded`). Ajouter un critère simple (ex: `source` pour `rdv_scheduled`) si possible et pertinent pour le MVP. Assurer que les étapes par défaut sont créées.
-    *   **Tests (Windsurf - Unitaire/API si possible) :** Vérifier CRUD API via Postman ou tests automatisés si possible.
-    *   **Mesure de Succès :** API `/api/funnel-steps` confirmée comme fonctionnelle pour définir un funnel simple basé sur les types de touchpoints MVP.
-    *   **Priorité :** Critique.
-*   **MB-2.2 : Frontend - Page "Funnel Mapping" (Windsurf)**
-    *   **Objectif :** Créer l'interface utilisateur permettant de visualiser, réordonner, et potentiellement renommer/personnaliser (couleur?) les étapes du funnel.
-    *   **Tâches :** Créer la page `/funnel-mapping`. Appeler `GET /api/funnel-steps` pour afficher les étapes existantes (ou par défaut). Implémenter une interface (liste simple, drag and drop basique si possible) pour changer l'ordre (`position`). Appeler `POST /api/funnel-steps/positions` (ou `PATCH /api/funnel-steps/:step_id` pour chaque étape) pour sauvegarder les changements. Permettre de modifier le `label` (et `couleur`?).
-    *   **Tests (CTO Manuel) :** Créer/afficher les étapes par défaut. Modifier l'ordre, sauvegarder, rafraîchir, vérifier persistance. Modifier un label, sauvegarder, vérifier.
-    *   **Mesure de Succès :** L'utilisateur peut visualiser et personnaliser l'ordre/nom de ses étapes de funnel.
-    *   **Priorité :** Critique.
+*   **MB-1.1.1 : Correction Erreur Clé Étrangère `visitors`**
+    *   **Objectif :** Permettre l'association du `visitor_id` fallback au `MasterLead` sans violer la contrainte FK.
+    *   **Action :** Modifier `MasterLeadService` pour insérer le `visitor_id` fallback dans la table `visitors` si besoin avant de l'associer dans `lead_visitor_ids`.
+    *   **Mesure de Succès :** Absence de l'erreur FK `lead_visitor_ids_visitor_id_fkey` dans les logs lors du traitement du webhook.
+    *   **Statut : ✅ COMPLÉTÉ (07/04/2025)**
+    *   **Priorité : CRITIQUE**
+*   **MB-1.1.2 : Vérification/Correction Colonne `integration_type` Table `touchpoints`**
+    *   **Objectif :** Permettre la création du touchpoint avec le type d'intégration.
+    *   **Action :** Vérifier structure table `touchpoints` via Supabase Studio. Si `integration_type` manque, créer et appliquer une migration SQL (`ALTER TABLE public.touchpoints ADD COLUMN integration_type TEXT NULL;`). Vérifier absence de faute de frappe.
+    *   **Mesure de Succès :** Absence de l'erreur `Could not find the 'integration_type' column...` dans les logs.
+    *   **Statut : ✅ COMPLÉTÉ (07/04/2025)**
+    *   **Priorité : CRITIQUE**
+*   **MB-1.1.3 : Test E2E Webhook Calendly `invitee.created` (Post-Corrections)**
+    *   **Objectif :** Confirmer que le flux complet (Réception Webhook -> Résolution UserId -> Stitching Lead (Fallback) -> Création Touchpoint) fonctionne sans aucune erreur.
+    *   **Action :** Prendre un RDV test Calendly. Observer les logs backend. Vérifier la DB (`touchpoints` et `master_leads`).
+    *   **Mesure de Succès :** Log `Touchpoint 'rdv_scheduled' créé avec succès...`. Enregistrement correct dans `touchpoints` lié au bon `user_id` et `master_lead_id`. AUCUNE ERREUR.
+    *   **Statut : ✅ COMPLÉTÉ (07/04/2025)**
+    *   **Priorité : CRITIQUE**
 
----
+#### **Bloc 1.2 : Validation Webhook iClosed via Zapier (Priorité #2)**
 
-**Phase 3 : Développement Analyse Funnel Custom**
+*   **MB-1.2.1 : Configuration & Test Zap iClosed -> FunnelDoctor**
+    *   **Objectif :** Assurer l'envoi correct des données iClosed (statut confirmé) vers `/api/webhooks/iclosed`.
+    *   **Action (Mehdi/CTO) :** Configurer/tester le Zapier. Observer les logs backend FunnelDoctor.
+    *   **Mesure de Succès :** Log de réception sur l'endpoint iClosed avec les données attendues.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : HAUTE**
+*   **MB-1.2.2 : Validation Traitement Webhook iClosed & Stitching**
+    *   **Objectif :** Confirmer traitement backend, stitching (comment `visitorId` ou email est récupéré/transmis via Zap ?), et création touchpoint `rdv_scheduled` ou `rdv_confirmed`.
+    *   **Action (Windsurf/Mehdi) :** Analyser/Modifier contrôleur/service iClosed. Exécuter test Zapier. Vérifier logs & DB.
+    *   **Mesure de Succès :** Touchpoint créé, lié au bon `user_id` et `MasterLead`.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : HAUTE**
 
-*   **MB-3.1 : Backend - Logique Analyse Custom (`FunnelAnalyticsService` - Windsurf)**
-    *   **Objectif :** Implémenter la logique de calcul des conversions basée sur les `funnel_steps` définis par l'utilisateur et les `touchpoints` enregistrés.
-    *   **Tâches :**
-        *   Créer la méthode principale (ex: `calculateCustomFunnelAnalytics(userId, period)`).
-        *   Injecter `FunnelStepsService` et `TouchpointsService` (ou utiliser Supabase client directement).
-        *   Récupérer les `funnel_steps` ordonnés pour l'`userId`.
-        *   Pour chaque étape N :
-            *   Déterminer les critères de touchpoint (ex: `event_type`, `source`).
-            *   **Écrire la requête SQL/logique complexe** pour compter les `master_leads` uniques ayant atteint l'étape N (touchpoint correspondant DANS la période) ET ayant aussi atteint les étapes N-1, N-2... 1.
-            *   Stocker le nombre de leads pour chaque étape.
-            *   Agréger le CA pour l'étape 'payment_succeeded'.
-        *   Calculer les taux de conversion.
-        *   Retourner les données formatées pour l'entonnoir.
-    *   **Tests (Windsurf - Unitaire) :** Écrire des tests unitaires pour cette logique de calcul avec des données de touchpoints simulées et différentes définitions de funnel.
-    *   **Mesure de Succès :** La logique de calcul est implémentée et validée par des tests unitaires pour différents scénarios.
-    *   **Priorité :** **CRITIQUE - Cœur du MVP**.
-*   **MB-3.2 : Backend - API Analyse Custom (`FunnelAnalyticsController` - Windsurf)**
-    *   **Objectif :** Exposer la logique de calcul via une API REST sécurisée.
-    *   **Tâches :** Créer l'endpoint `GET /api/analytics/custom-funnel` (protégé par `JwtAuthGuard`). Accepter le paramètre `period`. Appeler `funnelAnalyticsService.calculateCustomFunnelAnalytics`. Retourner les données formatées.
-    *   **Tests (Windsurf - API via `supertest` si possible) :** Tester l'endpoint avec différentes périodes et s'assurer qu'il renvoie les données attendues (basées sur les mocks des tests unitaires du service).
-    *   **Mesure de Succès :** L'API est fonctionnelle et renvoie les données d'analyse calculées.
-    *   **Priorité :** Critique (après MB-3.1).
-*   **MB-3.3 : Frontend - Page "Funnel Analytics" (Windsurf)**
-    *   **Objectif :** Afficher l'entonnoir de conversion dynamique basé sur les données de l'API custom.
-    *   **Tâches :** Modifier la page `/funnel-analytics`. Remplacer les données MOCK par un appel à `GET /api/analytics/custom-funnel` (via `fetchWithAuth`) en passant la période sélectionnée. Utiliser une librairie de graphiques (si déjà présente) ou une simple représentation HTML/CSS pour afficher l'entonnoir avec les étapes, les nombres, et les taux de conversion reçus de l'API. Ajouter un sélecteur de période (ex: 7 jours, 30 jours, 90 jours).
-    *   **Tests (CTO Manuel) :** Vérifier l'affichage correct de l'entonnoir pour différentes périodes. Comparer les chiffres avec les attentes basées sur les données de test E2E.
-    *   **Mesure de Succès :** L'utilisateur peut visualiser son funnel personnalisé et ses performances pour différentes périodes.
-    *   **Priorité :** Critique (après MB-3.2).
+#### **Bloc 1.3 : Validation Tracking Snippet & Stitching `visitorId` (Priorité #3)**
+
+*   **MB-1.3.1 : Test Tracking Visite -> RDV (Calendly via UTM `visitorId`)**
+    *   **Objectif :** Confirmer le stitching via `visitorId` passé en UTM `utm_content`.
+    *   **Action (Mehdi) :** 1. Visite page (note `visitorId`). 2. RDV Calendly avec `?utm_content=VISITOR_ID` et email différent. Vérifier logs & DB.
+    *   **Mesure de Succès :** Stitching utilise `visitorId` UTM, touchpoint lié au `MasterLead` initial.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE**
+*   **MB-1.3.2 : Test Tracking Visite -> RDV (iClosed via `visitorId` transmis par Zapier)**
+    *   **Objectif :** Confirmer le stitching `visitorId` pour iClosed.
+    *   **Action (Mehdi/CTO/Windsurf) :** 1. Visite page (note `visitorId`). 2. Simuler RDV iClosed via Zapier, **assurer transmission `visitorId`** (clarifier comment Zapier récupère/envoie ce `visitorId`). Email différent. Vérifier logs & DB.
+    *   **Mesure de Succès :** Stitching utilise `visitorId` reçu, touchpoint lié au `MasterLead` initial.
+    *   **Statut : À FAIRE (Clarification requise)**
+    *   **Priorité : HAUTE**
+
+#### **Bloc 1.4 : Finalisation Autres Intégrations (Priorité #4)**
+
+*   **MB-1.4.1 : Validation Complète Stripe (Config + Webhook + Touchpoint `payment_succeeded`)**
+    *   **Action (Mehdi/Windsurf) :** Configurer, tester paiement, vérifier logs & DB.
+    *   **Mesure de Succès :** Touchpoint `payment_succeeded` créé et lié.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : HAUTE**
+*   **MB-1.4.2 : Validation Complète YouTube (OAuth + Statut API)**
+    *   **Action (Mehdi/Windsurf) :** Tester OAuth YT. Corriger erreur `/api/auth/youtube/status` (multiple rows).
+    *   **Mesure de Succès :** Connexion/Déconnexion YT OK. Statut fiable.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : MOYENNE**
+*   **MB-1.4.3 : Validation Complète Opt-in (Webhook + Stitching/Bridge)**
+    *   **Action (Mehdi/Windsurf) :** Tester webhook opt-in. Vérifier création `MasterLead` et potentielle alimentation table `bridge`.
+    *   **Mesure de Succès :** Touchpoint `optin` créé et lead associé. `bridge` alimenté si applicable.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : MOYENNE**
 
 ---
 
-**Phase 4 : Finalisation et Tests E2E**
+### **Phase 2 : Développement Interface & Logique Funnel/Analytics**
 
-*   **MB-4.1 : Backend - API Lister Touchpoints (MVP-7 - Windsurf)**
-    *   **Objectif :** Permettre au frontend d'afficher la timeline brute des événements pour le débogage ou une vue détaillée.
-    *   **Tâches :** Implémenter `GET /api/touchpoints/my` (authentifié) qui retourne les touchpoints de l'utilisateur, triés par date.
-    *   **Tests (Windsurf/CTO) :** Appel API simple.
-    *   **Mesure de Succès :** Endpoint fonctionnel.
-    *   **Priorité :** Moyenne.
-*   **MB-4.2 : Frontend - Générateur Snippet (MVP-8 - Windsurf)**
-    *   **Objectif :** Fournir à l'utilisateur le snippet JS à copier/coller.
-    *   **Tâches :** Créer/Finaliser la page `/tracking-snippet`. Afficher la balise `<script>` complète, en incluant dynamiquement le `data-fd-site` unique de l'utilisateur (à récupérer via `GET /api/users/me` ou à générer/stocker). Ajouter un bouton "Copier".
-    *   **Tests (CTO Manuel) :** Vérifier affichage, vérifier copie.
-    *   **Mesure de Succès :** L'utilisateur peut facilement récupérer son snippet personnalisé.
-    *   **Priorité :** Haute.
-*   **MB-4.3 : Frontend - Dashboard Minimal (MVP-9bis - Optionnel / Simplifié)**
-    *   **Objectif :** Fournir une vue rapide, peut-être juste les KPIs globaux issus de l'analyse custom.
-    *   **Tâches :** Modifier la page `/dashboard` pour appeler `/api/analytics/custom-funnel` et afficher quelques chiffres clés (Total Visites, Leads, RDV, Ventes, CA sur la période par défaut).
-    *   **Tests (CTO Manuel) :** Vérifier affichage.
-    *   **Mesure de Succès :** Vue d'accueil basique fonctionnelle.
-    *   **Priorité :** Basse (Funnel Analytics est plus important).
-*   **MB-4.4 : Tests E2E Complets & QA (MVP-10 - CTO + Windsurf)**
-    *   **Objectif :** Valider l'ensemble des flux utilisateurs clés de bout en bout.
-    *   **Tâches :**
-        *   Test Complet iClosed (Page Test -> Résa -> Zapier -> Backend -> DB -> Funnel Analytics).
-        *   Test Complet Stripe (Page Test -> Paiement Test -> Webhook -> Backend -> DB -> Funnel Analytics).
-        *   Test Complet Calendly (Page Test -> Résa -> Webhook -> Backend -> DB -> Funnel Analytics).
-        *   Test Opt-in AC/CK (Page Test avec Form -> Soumission -> API Bridge -> Backend -> DB -> Funnel Analytics).
-        *   Test Connexion/Déconnexion YouTube.
-        *   Validation Funnel Mapping.
-        *   Validation Funnel Analytics (exactitude des chiffres, filtres).
-    *   **Mesure de Succès :** Tous les flux principaux fonctionnent comme attendu, les données sont correctes et cohérentes dans l'application. MVP prêt pour bêta.
-    *   **Priorité :** **FINALE ET CRITIQUE.**
+*(Objectif : Construire la couche de valeur métier visible par l'utilisateur)*
+
+#### **Bloc 2.1 : Définition du Funnel**
+
+*   **MB-2.1.1 : API Funnel Steps (CRUD & Ordonnancement)**
+    *   **Objectif :** API REST `/api/funnel-steps` pour gérer les étapes par utilisateur, liées aux `event_type`.
+    *   **Action :** Développer/Valider `FunnelStepsModule`. Tests API.
+    *   **Mesure de Succès :** Gestion complète des étapes via API.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE**
+*   **MB-2.1.2 : UI Funnel Mapping**
+    *   **Objectif :** Interface pour visualiser/réordonner/sauvegarder les étapes.
+    *   **Action :** Développer page Next.js `/funnel-mapping`.
+    *   **Mesure de Succès :** Utilisateur peut gérer son funnel visuellement.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE**
+
+#### **Bloc 2.2 : Calcul des KPIs & Analytics**
+
+*   **MB-2.2.1 : Décision Archi Statut RDV "Réalisé" & Attribution Vidéo**
+    *   **Objectif :** Décider techniquement COMMENT tracker RDV "réalisé" et attribuer à une vidéo YT source.
+    *   **Action (CTO/Mehdi) :** Discussion et décision technique.
+    *   **Mesure de Succès :** Stratégies claires définies.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE**
+*   **MB-2.2.2 : Implémenter `FunnelAnalyticsService` (Calcul KPIs)**
+    *   **Objectif :** Logique backend pour calculer KPIs clés (Leads, RDV Gen, RDV Réal, Ventes, CA, Taux Conv...) par période/source/vidéo, basée sur funnel user.
+    *   **Action :** Développer service NestJS. Tests unitaires.
+    *   **Mesure de Succès :** Calculs corrects validés par tests.
+    *   **Statut : À FAIRE**
+    *   **Priorité : CRITIQUE**
+*   **MB-2.2.3 : Créer Endpoints API Analytics (`/summary`, `/funnel`, `/by-source`)**
+    *   **Objectif :** Exposer les calculs via API REST.
+    *   **Action :** Développer contrôleur NestJS.
+    *   **Mesure de Succès :** API renvoie données formatées pour UI.
+    *   **Statut : À FAIRE**
+    *   **Priorité : CRITIQUE**
+
+#### **Bloc 2.3 : Affichage Frontend des Analytics**
+
+*   **MB-2.3.1 : UI Dashboard Principal avec KPIs & Vue Funnel Simple**
+    *   **Objectif :** Afficher KPIs agrégés et visualisation simple du funnel.
+    *   **Action :** Développer page Next.js `/dashboard` (revue). Appels API `/summary`, `/funnel`.
+    *   **Mesure de Succès :** KPIs clés visibles. Funnel visualisé.
+    *   **Statut : À FAIRE**
+    *   **Priorité : CRITIQUE**
+*   **MB-2.3.2 : UI Rapport par Source/Vidéo**
+    *   **Objectif :** Afficher performance ventilée (Leads, RDV, Ventes, CA...) par Vidéo YT.
+    *   **Action :** Développer page/composant Next.js. Appel API `/by-source?groupBy=video`. Affichage tableau/graph.
+    *   **Mesure de Succès :** Utilisateur peut analyser performance par contenu source.
+    *   **Statut : À FAIRE**
+    *   **Priorité : CRITIQUE**
 
 ---
 
-Ce plan est beaucoup plus détaillé et intègre la partie Funnel Analytics custom comme un élément central du MVP. C'est ambitieux mais aligné avec ta vision.
+### **Phase 3 : Finalisation & Tests E2E**
 
-**Prochaine Étape Concrète :**
+*(Objectif : Polir, refactoriser, tester de bout en bout)*
 
-1.  Windsurf doit commiter les dernières corrections backend.
-2.  Windsurf doit créer la branche stable.
-3.  Windsurf peut commencer **MB-1.1 (Intégration Stripe Frontend)** pendant que tu **valides le Test Zapier (MB-0.4)**.
+#### **Bloc 3.1 : Outils Utilisateur**
+
+*   **MB-3.1.1 : Générateur de Snippet Finalisé**
+    *   **Action :** Finaliser page `/tracking-snippet` avec `data-fd-site` dynamique. Bouton Copier.
+    *   **Mesure de Succès :** Utilisateur récupère facilement son snippet.
+    *   **Statut : À FAIRE/VALIDER**
+    *   **Priorité : HAUTE**
+*   **MB-3.1.2 : Template Zapier iClosed Finalisé**
+    *   **Action (CTO/Mehdi) :** Créer et tester le template Zapier partageable.
+    *   **Mesure de Succès :** Template fonctionnel et facile à utiliser.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE**
+
+#### **Bloc 3.2 : Refactoring & Améliorations Techniques**
+
+*   **MB-3.2.1 : Refactoring Frontend (Hooks Custom - `useCalendlyAuth`, etc.)**
+    *   **Action :** Nettoyer composants (ex: `/settings/integrations`) via hooks.
+    *   **Mesure de Succès :** Code frontend plus propre et maintenable.
+    *   **Statut : À FAIRE**
+    *   **Priorité : MOYENNE**
+*   **MB-3.2.2 : Sécurisation Webhooks (Vérification Signature Calendly/Stripe)**
+    *   **Action :** Implémenter vérification signature dans contrôleurs webhook.
+    *   **Mesure de Succès :** Endpoints sécurisés contre requêtes invalides.
+    *   **Statut : À FAIRE**
+    *   **Priorité : HAUTE (Sécurité)**
+*   **MB-3.2.3 : Nettoyage Déconnexion (Suppression Webhook Calendly)**
+    *   **Action :** Ajouter appel API DELETE webhook Calendly dans logique `revoke`.
+    *   **Mesure de Succès :** Ressources Calendly nettoyées lors déconnexion.
+    *   **Statut : À FAIRE**
+    *   **Priorité : MOYENNE**
+
+#### **Bloc 3.3 : Tests End-to-End & QA**
+
+*   **MB-3.3.1 : Exécution Scénarios E2E Complets (Focus iClosed & KPIs)**
+    *   **Action (Mehdi/CTO) :** Tester parcours complets (Visite YT -> Optin -> RDV iClosed -> Paiement Stripe). Vérifier stitching. Vérifier exactitude KPIs/Analytics affichés.
+    *   **Mesure de Succès :** MVP fonctionnel, fiable et renvoie des données correctes et cohérentes.
+    *   **Statut : À FAIRE**
+    *   **Priorité : CRITIQUE (Validation Finale MVP)**
+
+---
+
+## Prochaine Étape IMMU00c9DIATE
+
+**Étant donné que les blocs 1.1.1 et 1.1.2 ont été complétés avec succès (07/04/2025) :**
+
+1. **Priorité #1 - Bloc 1.2 :** Validation du flux iClosed
+   * Configuration du Zap iClosed
+   * Test du webhook et vérification de la création du touchpoint
+
+2. **Priorité #2 - Bloc 1.3 :** Validation du stitching via `visitorId`
+   * Test du passage de `visitorId` via UTM pour Calendly
+   * Clarification de la transmission du `visitorId` pour iClosed
+
+3. **Priorité #3 - Bloc 2.1 :** Définition du funnel utilisateur
+   * Développer/valider l'API REST `/api/funnel-steps`
+   * Créer l'interface permettant de définir les étapes du funnel

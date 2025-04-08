@@ -5,7 +5,7 @@ import { AssociateBridgeDto } from './dto/associate-bridge.dto';
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('Bridging')
-@Controller('api/bridge')
+@Controller('bridge')
 export class BridgingController {
   private readonly logger = new Logger(BridgingController.name);
 

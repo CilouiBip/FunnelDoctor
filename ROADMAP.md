@@ -44,14 +44,23 @@ Notre priorité actuelle est d'implémenter une solution robuste de "Cookie + Pa
 - ✅ **Flow complet UTM → Landing** : Vérifier la capture des paramètres UTM et la génération du visitor_id
 
 #### Bloc 1.3 : Validation Stitching `visitorId`
-- ❌ **MB-1.3.1 (Test Calendly via UTM)** : **ÉCHEC PARTIEL / DÉPRIORITISÉ** - Échec modification lien sur ConvertKit ; `utm_content` non transmis par webhook Calendly standard. Stratégie non fiable.
-- ✅ **MB-1.3.2 (Test Calendly via postMessage + Bridge API)** : Stratégie `postMessage` + `/api/bridge/associate` validée fonctionnellement (widget embed JS), capture `visitorId` sans email.
-- 📝 **Note stratégique Calendly** : Stratégie finale hybride. Priorité à `postMessage` + Bridge API (si widget embed JS utilisé). Fallback sur stitching via Email (webhook) + liaison `visitorId` via Opt-in/autres événements.
+- ❌ **MB-1.3.1 (Test Calendly via UTM)** : **ÉCHEC DÉFINITIF / ABANDONNÉ** - Échec modification lien sur ConvertKit ET `utm_content` non fiable/non renvoyé par webhook Calendly.
+- ✅ **MB-1.3.2 (Test Calendly via postMessage + Bridge API)** : **SUCCÈS (pour Widget Embed JS)** - Stratégie `postMessage` + `/api/bridge/associate` validée fonctionnellement (widget embed JS), capture `visitorId` sans email via bridge.
+- 📝 **Note Stratégique Globale sur Calendly** : Stratégie Calendly MVP : Hybride. **Priorité #1 : Widget Embed JS + `postMessage` + Bridge API** (capture `visitorId` via bridge). **Fallback (Lien direct / échec postMessage) :** Stitching via Email (webhook) uniquement pour l'événement RDV, liaison `visitorId` <-> Email indispensable via **Opt-in** ou autre événement.
 
-#### Suite Phase A
+#### Nouvelles Priorités Immédiates (selon avis CTO)
+- 🔴 **#1 Correction Analytics SQL** : Résolution prioritaire des bugs de requêtes SQL dans les rapports analytics
+- 🔴 **#2 Correction YouTube Token** : Résolution des problèmes de gestion des tokens YouTube OAuth
+- 🔴 **#3 Implémentation/Validation Stitching via Opt-in** : Assurer la capture et l'association correcte de `visitorId` + Email lors des événements d'opt-in
+
+#### Suite Phase A (après résolution des priorités ci-dessus)
 - ⬜ **Flow Calendly → Stripe** : Implémenter l'association visiteur-paiement via webhook Stripe
 - ⬜ **Test intégration complète** : Valider le flux entier de l'UTM jusqu'au paiement
 - ⬜ **Dashboard analytics** : Visualiser les taux de conversion à chaque étape du funnel
+
+#### Améliorations Post-MVP (Calendly)
+- ⬜ **Question Personnalisée Calendly** : Explorer l'ajout d'une question cachée pour transmettre le `visitorId`
+- ⬜ **Page de Redirection Intermédiaire** : Développer une solution de redirection permettant un meilleur tracking pour les liens directs
 
 #### Phase B : Intégration OAuth YouTube (future)
 - ⬜ **Service OAuth** : Développer les endpoints d'autorisation et callback pour YouTube

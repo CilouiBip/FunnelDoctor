@@ -40,6 +40,11 @@ async function bootstrap() {
     allowedOrigins.push(...additionalOrigins);
   }
   
+  // Ajouter explicitement les origines ConvertKit (kit.com et convertkit.com)
+  if (!allowedOrigins.includes('https://functions-js.kit.com')) {
+    allowedOrigins.push('https://functions-js.kit.com');
+  }
+  
   // Log pour débugger
   console.log(`[CORS] Origines autorisées: ${JSON.stringify(allowedOrigins)}`);
   
@@ -98,14 +103,31 @@ async function bootstrap() {
   // Configuration CORS STANDARD complète
   app.enableCors({
     origin: (origin, callback) => {
-      // Logique pour autoriser les origines
-      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-        console.log(`[CORS main.ts] Allowed origin: ${origin || 'No Origin'}`);
+      // Pas d'origine (requête locale ou même origine) - toujours autoriser
+      if (!origin) {
+        console.log(`[CORS main.ts] Allowed local origin`);
         callback(null, true);
-      } else {
-        console.error(`[CORS main.ts] Blocked origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        return;
       }
+      
+      // Vérification exacte des origines autorisées
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        console.log(`[CORS main.ts] Allowed origin (exact match): ${origin}`);
+        callback(null, true);
+        return;
+      }
+      
+      // Vérification spéciale pour les domaines ConvertKit (kit.com / convertkit.com)
+      if (origin.includes('functions-js') && 
+          (origin.includes('kit.com') || origin.includes('convertkit.com'))) {
+        console.log(`[CORS main.ts] Allowed ConvertKit origin: ${origin}`);
+        callback(null, true);
+        return;
+      }
+      
+      // Origine non autorisée
+      console.error(`[CORS main.ts] Blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
