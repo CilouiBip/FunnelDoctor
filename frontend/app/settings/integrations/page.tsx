@@ -15,6 +15,9 @@ const IntegrationsPage = () => {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('youtube');
   
+  // Référence pour suivre si une vérification YouTube est déjà en cours
+  const youtubeCheckInProgress = useRef(false);
+  
   // Utilisation du hook useYouTubeAuth pour gérer la connexion YouTube
   const { 
     isConnected: isYoutubeConnected, 
@@ -118,7 +121,7 @@ const IntegrationsPage = () => {
   useEffect(() => {
     // Log de tous les paramètres d'URL pour le débogage
     console.log('[URL PARAMS] Tous les paramètres URL au chargement:', 
-      Object.fromEntries([...searchParams.entries()]));
+      Object.fromEntries(Array.from(searchParams.entries())));
     
     const youtubeStatus = searchParams.get('youtube_status');
     const calendlyStatus = searchParams.get('calendly_status');
@@ -128,12 +131,15 @@ const IntegrationsPage = () => {
     console.log('[URL PARAMS] calendly_status:', calendlyStatus);
     console.log('[URL PARAMS] message d\'erreur:', errorMessage);
     
-    if (youtubeStatus === 'success') {
+    if (youtubeStatus === 'success' && !youtubeCheckInProgress.current) {
       console.log('[YOUTUBE CALLBACK] Succès détecté, toast affiché');
       toast.success('Connexion YouTube réussie !');
-      // Rafraîchir le statut de connexion
+      // Rafraîchir le statut de connexion une seule fois
       console.log('[YOUTUBE CALLBACK] Appel à checkYoutubeConnection()');
-      checkYoutubeConnection();
+      youtubeCheckInProgress.current = true;
+      checkYoutubeConnection().finally(() => {
+        youtubeCheckInProgress.current = false;
+      });
       // Nettoyer l'URL
       console.log('[YOUTUBE CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
@@ -163,7 +169,8 @@ const IntegrationsPage = () => {
       console.log('[CALENDLY CALLBACK] Nettoyage de l\'URL');
       router.replace('/settings/integrations', { scroll: false });
     }
-  }, [searchParams, router, checkYoutubeConnection, isCalendlyConnected, checkCalendlyConnection]);
+  // Important: checkYoutubeConnection a été retiré des dépendances pour éviter les boucles infinies
+  }, [searchParams, router, isCalendlyConnected, checkCalendlyConnection]);
 
   // Nous déplacerons l'écouteur d'événements direct pour le bouton Calendly après la déclaration de connectCalendly
   
@@ -189,10 +196,12 @@ const IntegrationsPage = () => {
         setUserProfile(userData);
         
         // Vérifier si l'utilisateur a une intégration Calendly active
+        // Utilisation de la notation 'as any' pour contourner la vérification de type pour cette propriété d'intégration
+        const userIntegrations = (userData as any).integrations;
         console.log('[INIT] Vérification des intégrations Calendly dans le profil:', 
-          userData.integrations?.calendlyConnected);
+          userIntegrations?.calendlyConnected);
         
-        if (userData.integrations?.calendlyConnected) {
+        if (userIntegrations?.calendlyConnected) {
           console.log('[INIT] Integration Calendly trouvée dans le profil, définition de isCalendlyConnected à true');
           setIsCalendlyConnected(true);
         }

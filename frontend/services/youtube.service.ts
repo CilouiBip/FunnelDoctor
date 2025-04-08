@@ -194,8 +194,10 @@ export const fetchAggregatedKPIs = async (period: 'last7' | 'last28' | 'last30' 
       throw new Error('Format de réponse invalide: données manquantes');
     }
     
+    // Utilisation de 'as any' pour contourner l'erreur de type tout en maintenant la logique actuelle
+    // Une approche plus propre serait de réviser la structure de la réponse API avec le backend
     console.log(`[KPIS] Données reçues pour ${response.data.data.totalVideos} vidéos sur ${period}`);
-    return response.data.data.data;
+    return (response.data.data as any).data || response.data.data;
   } catch (error) {
     console.error(`[KPIS] Erreur lors de la récupération des KPIs agrégés:`, error);
     throw error;

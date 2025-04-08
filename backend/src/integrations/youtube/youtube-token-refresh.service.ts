@@ -26,13 +26,13 @@ export class YouTubeTokenRefreshService {
       // Find integrations with tokens that expire in less than 2 hours
       const expiryThreshold = Math.floor(Date.now() / 1000) + 2 * 60 * 60; // current time + 2 hours
       
-      // Utiliser 'name' comme stockage d'ID utilisateur plutôt que 'user_id'
+      // Rechercher les jetons qui vont expirer bientôt
       // Logging pour diagnostic
       this.logger.log(`Recherche des jetons expirant avant ${new Date(expiryThreshold * 1000).toISOString()}`);
       
       const { data, error } = await this.supabaseService.getAdminClient()
         .from('integrations')
-        .select('id, name, config')
+        .select('id, name, user_id, config')
         .eq('integration_type', this.integration_type)
         .lt('config->expires_at', expiryThreshold);
       
@@ -50,10 +50,10 @@ export class YouTubeTokenRefreshService {
       this.logger.log(`Found ${data.length} YouTube tokens to refresh`);
       
       // Process each token that needs refreshing
-      this.logger.debug(`Intégrations trouvées: ${JSON.stringify(data.map(i => ({id: i.id, userId: i.name})))}`);
+      this.logger.debug(`Intégrations trouvées: ${JSON.stringify(data.map(i => ({id: i.id, userId: i.user_id})))}`);
       
       const refreshPromises = data.map(integration => 
-        this.refreshTokenWithRetry(integration.name) // Utiliser 'name' comme ID utilisateur
+        this.refreshTokenWithRetry(integration.user_id) // Utiliser 'user_id' comme ID utilisateur correct
       );
       
       // Wait for all refresh operations to complete
