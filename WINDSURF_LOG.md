@@ -2,6 +2,36 @@
 
 Ce fichier sert à documenter les actions réalisées à chaque étape du développement du projet FunnelDoctor, conformément à la roadmap établie.
 
+## Résolution du bug de rafraîchissement des tokens YouTube et de la boucle frontend (MB-1.4.2)
+
+### [08/04/2025] Identification et correction des problèmes YouTube
+
+- ⏳ **Bug critique d'authentification YouTube** (Problème MB-1.4.2)
+  - Diagnostic approfondi du `YouTubeTokenRefreshService` et `YouTubeAuthService`
+  - Découverte : Le refresh job utilisait incorrectement `integration.name` ("youtube") au lieu de `integration.user_id` (UUID)
+  - Correction de la requête pour extraire le champ `user_id` et l'utiliser dans l'appel au service d'authentification
+  - Commit : `e599e8a` (fix(youtube): Resolve frontend infinite loop, build errors and backend token refresh issue)
+  - Validation finale planifiée lors de l'exécution automatique du job à 17h00
+
+- ✅ **Résolution de la boucle infinie d'appels API frontend**
+  - Problème identifié : Le hook `useYouTubeAuth` et `page.tsx` créaient une boucle d'appels vers `/api/auth/youtube/status`
+  - Cause racine : `checkYoutubeConnection` en dépendance d'un `useEffect` + absence de verrouillage
+  - Solution : 
+    - Ajout d'une référence `useRef` pour suivre l'état des appels en cours
+    - Suppression de la dépendance circulaire dans `useEffect`
+    - Protection contre les appels concurrents
+  - Amélioration de la stabilité de l'interface utilisateur en supprimant le clignotement
+
+- ✅ **Corrections des erreurs TypeScript pour le build de production**
+  - Résolution de l'erreur d'itération sur `searchParams.entries()` avec `Array.from()`
+  - Correction du typage pour l'accès aux propriétés `integrations` et `data` manquantes dans les interfaces
+  - Tests de build front/back réussis sans erreur
+
+- ✅ **Documentation des risques de fiabilité de données**
+  - Création du fichier `DATA_RELIABILITY_RISKS.md` détaillant les limites et solutions pour atteindre 95% de fiabilité
+  - Analyse des problèmes potentiels de tracking, stitching et attribution
+  - Proposition de stratégies d'atténuation pour le MVP et le futur
+
 ## Tracking Calendly et Stratégie d'association Visitor-Lead
 
 ### [08/04/2025] Investigation et Implémentation de la Stratégie Hybride Calendly

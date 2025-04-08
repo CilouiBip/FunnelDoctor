@@ -1,3 +1,34 @@
+# Mise à jour du journal Windsurf - 08/04/2025
+
+## Correction des problèmes d'intégration YouTube (MB-1.4.2)
+
+### 1. Résolution du bug critique de rafraîchissement des tokens YouTube
+
+- ⏳ **[08/04/2025]** Identification et correction du problème de rafraîchissement des tokens YouTube
+  - Diagnostic : Le `YouTubeTokenRefreshService` utilisait incorrectement `integration.name` (valeur fixe "youtube") au lieu de `integration.user_id` (UUID réel)
+  - Correction du service pour utiliser l'UUID correct de l'utilisateur lors de l'appel à `refreshTokenWithRetry`
+  - Modification de la requête Supabase pour sélectionner explicitement le champ `user_id`
+  - Mise à jour des logs de diagnostic pour une meilleure traçabilité
+  - Statut : En attente de validation finale lors de l'exécution planifiée du job à l'heure pleine
+
+### 2. Résolution de la boucle d'appels API et des erreurs de build frontend
+
+- ✅ **[08/04/2025]** Correction des problèmes sur la page d'intégrations
+  - Identification d'une boucle infinie d'appels API `/api/auth/youtube/status` causant des erreurs `net::ERR_INSUFFICIENT_RESOURCES`
+  - Ajout d'un mécanisme de verrouillage avec `useRef` pour éviter les appels concurrents
+  - Suppression de `checkYoutubeConnection` des dépendances du `useEffect` pour briser la boucle
+  - Correction des erreurs TypeScript pour permettre un build de production fonctionnel
+  - Résolution du clignotement de l'interface utilisateur et amélioration de la stabilité
+
+### 3. Documentation des risques de fiabilité des données
+
+- ✅ **[08/04/2025]** Création d'un document sur les risques de fiabilité des données
+  - Ajout d'un nouveau fichier `DATA_RELIABILITY_RISKS.md` documentant les risques pour atteindre 95% de données fiables
+  - Stratégies d'atténuation pour les problèmes liés au tracking, au stitching et à l'attribution
+  - Documentation des limites inhérentes et des solutions pour le MVP vs solutions avancées (post-MVP)
+
+---
+
 # Mise à jour du journal Windsurf - 07/04/2025
 
 ## Correction de l'intégration Calendly OAuth (MVP-1.2)
