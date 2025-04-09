@@ -68,9 +68,9 @@ Bloc 1.5 : Intégration Opt-in (ConvertKit ou autre)
 
 MB-1.5.1 : Définition Stratégie Capture visitorId + Email : ❓ À DÉFINIR. Comment récupérer visitorId (LocalStorage) depuis le formulaire Opt-in et l'envoyer avec l'email au backend ? (Champ caché + JS ? Zapier ? Webhook natif ?). Priorité : HAUTE. Mesure de Succès : Méthode fiable identifiée et documentée.
 
-MB-1.5.2 : Implémentation Backend Réception Opt-in : ❓ À FAIRE (ou vérifier). Quel endpoint reçoit ces données (/api/bridge/associate ou autre) ? Appelle-t-il MasterLeadService avec email ET visitorId ? Priorité : HAUTE. Mesure de Succès : Endpoint fonctionnel recevant email+visitorId et créant/mettant à jour l'association MasterLead.
+MB-1.5.2 : Implémentation Backend Réception Opt-in : ✅ COMPLÉTÉ. Nouvel endpoint `/api/webhooks/optin` créé avec authentification par clé API, validé via curl. Appelle correctement `MasterLeadService.findOrCreateMasterLead()` avec les paramètres email et visitorId. Réutilise l'infrastructure du backend pour la validation et la sécurité. Priorité : COMPLÉTÉE. Mesure de Succès : Endpoint fonctionnel recevant email+visitorId et créant/mettant à jour l'association MasterLead.
 
-MB-1.5.3 : Création Touchpoint optin : ❓ À FAIRE (ou vérifier). Un touchpoint optin est-il créé et lié au bon lead/visiteur ? Priorité : HAUTE. Mesure de Succès : Touchpoint optin créé et correctement associé.
+MB-1.5.3 : Création Touchpoint optin : ✅ COMPLÉTÉ. Implémentation de la création d'un touchpoint avec `event_type: 'optin'` dans le WebhooksService, lié au bon master lead et visitor_id, avec stockage des données contextuelles. Test réussi via curl avec réponse 201 confirmant la création du touchpoint. Priorité : COMPLÉTÉE. Mesure de Succès : Touchpoint optin créé et correctement associé.
 
 Phase 2 : Développement Logique Métier & Interface Utilisateur
 
