@@ -1,6 +1,8 @@
-import { Controller, Post, Body, Logger, HttpStatus, HttpException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Logger, HttpStatus, HttpException, HttpCode, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { CalendlyWebhookDto, StripeWebhookDto } from './dto/webhook.dto';
 import { IclosedWebhookDto } from './dto/iclosed-webhook.dto';
+import { OptinWebhookDto } from './dto/optin-webhook.dto';
 import { WebhooksService } from './webhooks.service';
 
 @Controller('webhooks')
@@ -213,6 +215,40 @@ export class WebhooksController {
       return { success: true, message: 'iClosed webhook received successfully' };
     } catch (error) {
       this.logger.error('Error processing iClosed webhook', error);
+      throw new HttpException(
+        error.message || 'Internal server error', 
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * Gère les données d'opt-in provenant de divers formulaires et systèmes
+   * Établit le stitching entre le visitor_id et l'email et crée un touchpoint de type 'optin'
+   * 
+   * @param optinData Données validées du webhook d'opt-in
+   * @returns Un message de confirmation
+   */
+  @Post('optin')
+  @HttpCode(201)
+  async handleOptinWebhook(@Body() optinData: OptinWebhookDto) {
+    try {
+      this.logger.log('Received Opt-in Webhook:', {
+        email: optinData.email,
+        visitorId: optinData.visitorId,
+        source: optinData.source || 'optin_webhook'
+      });
+      
+      // Appel au service pour traiter les données d'opt-in
+      const result = await this.webhooksService.handleOptinWebhook(optinData);
+      
+      return { 
+        success: true, 
+        message: 'Opt-in webhook processed successfully',
+        data: result
+      };
+    } catch (error) {
+      this.logger.error('Error processing opt-in webhook', error);
       throw new HttpException(
         error.message || 'Internal server error', 
         error.status || HttpStatus.INTERNAL_SERVER_ERROR
