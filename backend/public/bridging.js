@@ -308,7 +308,8 @@
       window.fdCalendlyObserverSet = true;
       
       const observer = new MutationObserver(function(mutations) {
-        let needsUpdate = false;
+        let needsCalendlyUpdate = false;
+        let needsFormUpdate = false;
         
         mutations.forEach(function(mutation) {
           if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
@@ -318,8 +319,12 @@
                 // Vérifier si l'élément ou ses enfants contiennent "calendly"
                 if ((node.outerHTML && node.outerHTML.toLowerCase().includes('calendly')) ||
                     (node.href && node.href.toLowerCase().includes('calendly'))) {
-                  needsUpdate = true;
-                  break;
+                  needsCalendlyUpdate = true;
+                }
+                
+                // Vérifier si un formulaire a été ajouté
+                if (node.tagName === 'FORM' || (node.querySelectorAll && node.querySelectorAll('form').length > 0)) {
+                  needsFormUpdate = true;
                 }
               }
             }
@@ -328,14 +333,21 @@
             if ((mutation.attributeName === 'href' && target.href && target.href.includes('calendly')) ||
                 (mutation.attributeName === 'onclick' && target.getAttribute('onclick') && target.getAttribute('onclick').includes('calendly')) ||
                 (mutation.attributeName === 'data-url' && target.getAttribute('data-url') && target.getAttribute('data-url').includes('calendly'))) {
-              needsUpdate = true;
+              needsCalendlyUpdate = true;
             }
           }
         });
         
-        if (needsUpdate) {
+        // Mettre u00e0 jour les liens Calendly si nu00e9cessaire
+        if (needsCalendlyUpdate) {
           fdLog('info', 'Modifications du DOM détectées, mise à jour des liens Calendly');
           injectVisitorIdIntoCalendlyLinks();
+        }
+        
+        // Injecter le visitorId dans les formulaires si des nouveaux ont u00e9tu00e9 ajoutu00e9s
+        if (needsFormUpdate) {
+          fdLog('info', 'Nouveaux formulaires détectés, injection du visitorId...');
+          injectVisitorIdIntoForms();
         }
       });
       
@@ -554,6 +566,67 @@
     }
   }
   
+  // Fonction pour injecter automatiquement le visitorId dans les formulaires d'opt-in
+  function injectVisitorIdIntoForms() {
+    if (config.debug) {
+      console.debug('[FD Bridging] Fonction injectVisitorIdIntoForms appelée.');
+    }
+    const visitorId = localStorage.getItem('funnel_doctor_visitor_id'); // Clé de stockage du visitorId
+
+    if (!visitorId) {
+      if (config.debug) {
+        console.debug('[FD Bridging] Pas de visitorId disponible dans localStorage.');
+      }
+      return;
+    }
+    if (config.debug) {
+      console.debug('[FD Bridging] Visitor ID lu:', visitorId);
+    }
+
+    const forms = document.querySelectorAll('form');
+    if (config.debug) {
+      console.debug('[FD Bridging] Formulaires trouvés sur la page:', forms.length);
+    }
+
+    forms.forEach(form => {
+      if (config.debug) {
+        console.debug('[FD Bridging] Traitement du formulaire:', form.id || 'sans-id');
+      }
+      // Heuristique pour trouver un champ email visible
+      const emailField = form.querySelector('input[type="email"]:not([type="hidden"]), input[name*="email"]:not([type="hidden"]), input[id*="email"]:not([type="hidden"]), input[placeholder*="email"]:not([type="hidden"]), input[class*="email"]:not([type="hidden"]), .email-field:not([type="hidden"]), [data-email]:not([type="hidden"]), [data-field-type="email"]:not([type="hidden"])');
+      if (config.debug) {
+        console.debug('[FD Bridging] Champ Email trouvé dans ce formulaire ?', !!emailField);
+      }
+
+      if (emailField) {
+        // Vérifier si le champ visitorId existe déjà
+        const existingField = form.querySelector('input[type="hidden"][name="visitorId"]'); // Recherche plus spécifique
+        if (config.debug) {
+          console.debug('[FD Bridging] Champ visitorId caché existant trouvé ?', !!existingField);
+        }
+
+        if (!existingField) {
+          if (config.debug) {
+            console.debug('[FD Bridging] Ajout du champ caché au formulaire');
+          }
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = 'visitorId'; // Correspond au DTO backend
+          hiddenInput.value = visitorId;
+          hiddenInput.setAttribute('data-fd-added', 'true'); // Marqueur optionnel
+          form.appendChild(hiddenInput);
+        } else if (config.debug) {
+          console.debug('[FD Bridging] Champ visitorId déjà présent, pas d\'ajout');
+        }
+      } else if (config.debug) {
+        console.debug('[FD Bridging] Pas de champ email trouvé dans ce formulaire, injection ignorée');
+      }
+    });
+    if (config.debug) {
+      console.debug('[FD Bridging] Fin du traitement des formulaires');
+    }
+  }
+
   // Fonction principale d'initialisation avec réessais
   function init() {
     fdLog('info', 'Initialisation');
@@ -563,6 +636,10 @@
     
     // Initialiser Stripe
     injectVisitorIdIntoStripeCheckout();
+    
+    // Injecter le visitorId dans les formulaires d'opt-in
+    fdLog('info', 'Injection du visitorId dans les formulaires...');
+    injectVisitorIdIntoForms();
     
     // Suivre l'événement d'initialisation du bridging
     window.FunnelDoctor.trackEvent('bridging_initialized', {

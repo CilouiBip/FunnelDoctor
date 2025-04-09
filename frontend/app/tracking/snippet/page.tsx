@@ -1,43 +1,68 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 
 const SnippetPage = () => {
+  // URL de l'API backend depuis les variables d'environnement
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  
+  const { data: session } = useSession();
+  
   const [config, setConfig] = useState({
-    siteId: 'fd-123456',
-    utmDays: '30',
-    selectors: 'a.cta, button.buy-now',
-    autoCapture: true,
-    scriptUrl: 'http://localhost:3000/funnel-doctor.js' // URL par défaut pour le développement local
+    siteId: '', // Sera récupéré dynamiquement ou généré à la première connexion
+    debug: false, // Option pour activer les logs de debugging
+    scriptUrl: backendUrl // URL du backend pour charger les scripts
   });
+  
+  // Simulation de récupération du siteId de l'utilisateur
+  useEffect(() => {
+    // Dans une implémentation réelle, ce siteId viendrait de l'API backend
+    // Pour cette démo, on utilise un UUID v4 fixe mais qui semble réel
+    const userSiteId = session?.user?.id || '00f08a34-9e6d-437e-acc9-e7d618c2bc74';
+    
+    setConfig(prev => ({
+      ...prev,
+      siteId: userSiteId
+    }));
+  }, [session]);
 
   const [copied, setCopied] = useState(false);
 
-  const handleConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target as HTMLInputElement;
-    const newValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+  const handleConfigChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
     
     setConfig({
       ...config,
-      [name]: newValue
+      [name]: checked
     });
   };
 
   const generateSnippetCode = () => {
-    return `<!-- FunnelDoctor Tracking Code -->
+    return `<!-- FunnelDoctor Tracking Snippet (v2) -->
 <script>
-  (function(w,d,s,fd){
-    var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s);
-    j.async=true;
-    j.src="${config.scriptUrl}";
-    j.setAttribute("data-fd-site", "${config.siteId}");
-    j.setAttribute("data-fd-utm-days", "${config.utmDays}");
-    j.setAttribute("data-fd-selectors", "${config.selectors}");
-    j.setAttribute("data-fd-auto-capture", "${config.autoCapture}");
-    f.parentNode.insertBefore(j,f);
+  (function(w,d,s){
+    var fdLoader=d.createElement(s);
+    fdLoader.async=true;
+    fdLoader.src="${config.scriptUrl}/funnel-doctor.js"; 
+    fdLoader.setAttribute("data-fd-site", "${config.siteId}");
+    ${config.debug ? '    fdLoader.setAttribute("data-debug", "true");
+' : ''}
+    fdLoader.onload = function() {
+      var fdBridging = d.createElement(s);
+      fdBridging.async = true;
+      fdBridging.src = "${config.scriptUrl}/bridging.js";
+      ${config.debug ? '      fdBridging.setAttribute("data-debug", "true");
+' : ''}
+      d.head.appendChild(fdBridging);
+    };
+    fdLoader.onerror = function() {
+      console.error("Erreur critique: Impossible de charger funnel-doctor.js depuis ${config.scriptUrl}/funnel-doctor.js");
+    };
+    d.head.appendChild(fdLoader);
   })(window,document,"script");
-</script>`;
+</script>
+<!-- FunnelDoctor Tracking Snippet - Fin -->`;
   };
 
   const copyToClipboard = () => {
@@ -55,77 +80,43 @@ const SnippetPage = () => {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold mb-4">Paramu00e8tres</h2>
           
-          <form className="space-y-6">
+          <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Site ID (Non modifiable)</label>
               <input 
                 type="text" 
                 name="siteId" 
                 value={config.siteId} 
-                onChange={handleConfigChange} 
-                className="w-full px-4 py-2 border rounded-md" 
+                readOnly 
+                className="w-full px-4 py-2 border bg-gray-100 rounded-md" 
               />
-              <p className="text-xs text-gray-500 mt-1">Identifiant unique pour votre site</p>
+              <p className="text-xs text-gray-500 mt-1">Votre identifiant unique automatiquement généré pour votre compte</p>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">URL du Script</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL du Serveur Backend</label>
               <input 
                 type="text" 
                 name="scriptUrl" 
                 value={config.scriptUrl} 
-                onChange={handleConfigChange} 
-                className="w-full px-4 py-2 border rounded-md" 
+                readOnly 
+                className="w-full px-4 py-2 border bg-gray-100 rounded-md" 
               />
-              <p className="text-xs text-gray-500 mt-1">URL du script FunnelDoctor (en local: http://localhost:3000/funnel-doctor.js)</p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Duru00e9e de ru00e9tention des UTMs</label>
-              <select 
-                name="utmDays" 
-                value={config.utmDays} 
-                onChange={handleConfigChange} 
-                className="w-full px-4 py-2 border rounded-md"
-              >
-                <option value="7">7 jours</option>
-                <option value="30">30 jours</option>
-                <option value="90">90 jours</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Su00e9lecteurs de liens CTA</label>
-              <input 
-                type="text" 
-                name="selectors" 
-                value={config.selectors} 
-                onChange={handleConfigChange} 
-                className="w-full px-4 py-2 border rounded-md" 
-              />
-              <p className="text-xs text-gray-500 mt-1">Su00e9lecteurs CSS pour vos boutons d'action</p>
+              <p className="text-xs text-gray-500 mt-1">URL du serveur FunnelDoctor (configuré automatiquement)</p>
             </div>
             
             <div className="flex items-center">
               <input 
                 type="checkbox" 
-                id="autoCapture" 
-                name="autoCapture" 
-                checked={config.autoCapture} 
+                id="debug" 
+                name="debug" 
+                checked={config.debug} 
                 onChange={handleConfigChange} 
                 className="mr-2" 
               />
-              <label htmlFor="autoCapture" className="text-sm text-gray-700">Capture automatique des u00e9vu00e9nements</label>
+              <label htmlFor="debug" className="text-sm text-gray-700">Activer les logs de débogage (console)</label>
             </div>
-            
-            <button 
-              type="button" 
-              className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark"
-              onClick={() => {/* Sauvegarder la configuration */}}
-            >
-              Mettre u00e0 jour la configuration
-            </button>
-          </form>
+          </div>
         </div>
         
         {/* Partie Droite: Code & Instructions */}
@@ -161,17 +152,22 @@ const SnippetPage = () => {
             <h3 className="font-medium text-lg mb-2">Instructions d'installation</h3>
             <ol className="list-decimal list-inside space-y-2 text-gray-700">
               <li>Copiez le code ci-dessus</li>
-              <li>Collez-le juste avant la balise &lt;/head&gt; de votre site ou dans votre outil d'email marketing</li>
-              <li>Pour tester avec ConvertKit, utilisez l'URL locale du script (http://localhost:3000/funnel-doctor.js)</li>
-              <li>Si ConvertKit ne peut pas accéder à localhost, utilisez un tunnel public (ngrok) et mettez à jour l'URL</li>
+              <li>Collez-le juste avant la balise &lt;/head&gt; de votre site</li>
+              <li>Le snippet chargera deux scripts :
+                <ul className="list-disc list-inside ml-5 mt-1">
+                  <li><code>funnel-doctor.js</code> : Script principal de tracking</li>
+                  <li><code>bridging.js</code> : Module de stitching qui associe visitor_id et email</li>
+                </ul>
+              </li>
             </ol>
             
             <div className="mt-4 p-3 bg-blue-50 rounded-md border border-blue-200">
-              <h4 className="font-medium text-blue-800">Test avec ConvertKit</h4>
+              <h4 className="font-medium text-blue-800">Intégration avec les formulaires d'opt-in</h4>
+              <p className="text-blue-700 text-sm mt-1">Pour une attribution précise, assurez-vous que vos formulaires d'opt-in envoient le <code>visitorId</code> avec l'email au webhook :</p>
               <ol className="list-decimal list-inside space-y-1 text-blue-700 mt-2">
-                <li>Générez votre snippet avec l'URL de script appropriée</li>
-                <li>Dans ConvertKit, ajoutez le snippet en utilisant le bloc HTML ou Script</li>
-                <li>Vérifiez que le siteId et les autres paramètres sont correctement configurés</li>
+                <li>Utilisez le webhook <code>{config.scriptUrl}/api/webhooks/optin</code></li>
+                <li>Envoyez <code>email</code>, <code>visitorId</code> et <code>apiKey</code> dans la requête</li>
+                <li>Le <code>visitorId</code> est automatiquement stocké par le script dans localStorage</li>
               </ol>
             </div>
             
