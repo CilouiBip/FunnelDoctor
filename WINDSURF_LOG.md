@@ -1,3 +1,27 @@
+## Implémentation de l'Injection JS du visitorId dans les formulaires (MB-1.5.1)
+
+### [09/04/2025] Développement et validation de l'injection automatique du visitorId dans les formulaires HTML
+
+- ✅ **Analyse et identification du fichier correct**
+  - Correction de l'erreur de chemin de fichier (identification du fichier à modifier : `/backend/public/bridging.js` et non `/frontend/public/bridging.js`)
+  - Audit du fonctionnement existant du script de tracking pour comprendre le cycle de vie du visitorId
+
+- ✅ **Implémentation de la fonction d'injection `injectVisitorIdIntoForms`**
+  - Création d'une fonction robuste qui recherche tous les formulaires dans le DOM
+  - Mise en place d'une heuristique pour détecter les champs email dans les formulaires
+  - Ajout d'un champ caché 'visitorId' uniquement dans les formulaires contenant un champ email
+  - Vérification préventive de l'existence du champ pour éviter les doublons
+
+- ✅ **Intégration à l'initialisation et aux mutations DOM**
+  - Appel de la fonction lors de l'initialisation du script pour traiter les formulaires existants
+  - Extension du MutationObserver existant pour détecter les nouveaux formulaires ajoutés dynamiquement
+  - Mise en place de logs conditionnels pour faciliter le débogage sans surcharger la console en production
+
+- ✅ **Tests et validation**
+  - Validation sur la page de test `test-optin-form.html` avec des formulaires statiques et dynamiques
+  - Confirmation de la présence du champ caché avec la valeur correcte du visitorId dans les requêtes
+  - Vérification du bon fonctionnement avec différents types de formulaires
+
 ## Implémentation du Stitching Opt-in (MB-1.5.2 et MB-1.5.3)
 
 ### [09/04/2025] Création de l'endpoint du webhook opt-in et du touchpoint associé
