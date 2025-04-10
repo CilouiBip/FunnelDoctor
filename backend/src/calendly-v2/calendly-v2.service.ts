@@ -130,7 +130,7 @@ export class CalendlyV2Service {
       this.logger.log(`URL de callback Calendly configurée: ${callbackUrl}`);
 
       // Définir les événements que nous voulons écouter
-      const events = ['invitee.created', 'invitee.canceled'];
+      const events = ['invitee.created', 'invitee.canceled', 'invitee_no_show.created', 'invitee_no_show.deleted'];
 
       // Vérifier si un webhook existe déjà pour cette organisation et cette URL (pour éviter doublons inutiles)
       const listResponse = await firstValueFrom(
@@ -353,8 +353,14 @@ export class CalendlyV2Service {
         // IMPORTANT: Passer payload.payload (qui contient invitee, scheduled_event etc.) et le resolvedUserId
         return this._handleInviteeCreated(payload.payload, resolvedUserId);
       case 'invitee.canceled':
-         // IMPORTANT: Passer payload.payload et le resolvedUserId
+        // IMPORTANT: Passer payload.payload et le resolvedUserId
         return this._handleInviteeCanceled(payload.payload, resolvedUserId);
+      case 'invitee_no_show.created':
+        // Gestion des RDVs non honorés (No Show)
+        return this._handleInviteeNoShowCreated(payload.payload, resolvedUserId);
+      case 'invitee_no_show.deleted':
+        // Gestion des annulations de No Show (rétablissement du statut précédent)
+        return this._handleInviteeNoShowDeleted(payload.payload, resolvedUserId);
       default:
         this.logger.warn(`Type d'événement Calendly non géré: ${payload.event}`);
         return { success: true, message: `Événement ignoré (non géré): ${payload.event}` }; // Retourne succès pour que Calendly ne retente pas
@@ -618,6 +624,243 @@ export class CalendlyV2Service {
     } catch (error) {
       this.logger.error(`[User: ${userId}] Erreur majeure lors du traitement de _handleInviteeCanceled: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Processing invitee.canceled failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Traite un événement de no-show (RDV non honoré)
+   * @param inviteePayload Données du payload Calendly (invitee, scheduled_event, no_show, etc.)
+   * @param userId ID de l'utilisateur FunnelDoctor
+   * @returns Objet avec statut de succès et données associées
+   */
+  private async _handleInviteeNoShowCreated(inviteePayload: any, userId: string) {
+    this.logger.log(`[User: ${userId}] Traitement d'un événement invitee_no_show.created`);
+
+    // Vérifier que les données essentielles sont présentes
+    if (!inviteePayload || !inviteePayload.invitee || !inviteePayload.invitee.email) {
+      this.logger.error(`[User: ${userId}] Données d'invité manquantes dans le payload invitee_no_show.created`);
+      return { success: false, error: 'Missing invitee data' };
+    }
+
+    const invitee = inviteePayload.invitee;
+    const email = invitee.email;
+    const eventUri = inviteePayload.scheduled_event?.uri;
+    this.logger.log(`[User: ${userId}] Email invité (no-show): ${email}, URI de l'événement: ${eventUri || 'non disponible'}`);
+
+    // Tenter de récupérer le visitor_id des UTM
+    let visitorIdFromUtm = this.extractVisitorIdFromResource(inviteePayload);
+    this.logger.log(`[User: ${userId}] Visitor ID depuis UTM (no-show): ${visitorIdFromUtm || 'non trouvé'}`);
+
+    try {
+      // Essayer de trouver le master_lead via email
+      this.logger.log(`[User: ${userId}] Recherche MasterLead existant avec email=${email}`);
+      const masterLead = await this.masterLeadService.findOrCreateMasterLead(
+        { email: email, visitor_id: visitorIdFromUtm },
+        userId,
+        'calendly'
+      );
+
+      if (!masterLead) {
+        this.logger.warn(`[User: ${userId}] Aucun MasterLead trouvé pour le no-show (email: ${email}). Impossible de mettre à jour le statut du RDV.`);
+        return { success: true, message: 'MasterLead not found for no-show event, no update possible.' };
+      }
+      this.logger.log(`[User: ${userId}] MasterLead trouvé pour no-show: ID=${masterLead.id}`);
+
+      // Préparer les données pour mettre à jour le touchpoint existant
+      const searchParams = {
+        user_id: userId,
+        event_type: 'rdv_scheduled',
+        master_lead_id: masterLead.id,
+        event_data: {}
+      };
+      
+      // Utiliser l'URI de l'événement pour trouver le RDV spécifique à marquer comme no-show
+      if (eventUri) {
+        searchParams.event_data = {
+          calendly_event_uri: eventUri
+        };
+      }
+      
+      // Préparer les données de no-show à stocker dans outcome_data
+      const outcomeData = {
+        no_show_time: inviteePayload.no_show?.no_show_at || new Date().toISOString(),
+        is_no_show: true
+      };
+
+      this.logger.log(`[User: ${userId}] Recherche du touchpoint 'rdv_scheduled' pour mise à jour vers no-show: ${JSON.stringify(searchParams)}`);
+      
+      // Rechercher et mettre à jour le touchpoint existant
+      const updateResult = await this.touchpointsService.findAndUpdateByEvent(
+        searchParams,
+        'no_show',
+        outcomeData
+      );
+
+      if (updateResult.success && updateResult.touchpoint) {
+        this.logger.log(`[User: ${userId}] Statut du touchpoint mis à jour avec succès: ${updateResult.touchpoint.id} -> 'no_show'`);
+        return {
+          success: true,
+          message: 'RDV marqué comme non honoré (no-show) avec succès',
+          lead_id: masterLead.id,
+          touchpoint_id: updateResult.touchpoint.id
+        };
+      } else {
+        this.logger.warn(`[User: ${userId}] Impossible de trouver un touchpoint 'rdv_scheduled' existant: ${updateResult.message}`);
+        
+        // Si aucun touchpoint n'est trouvé, créer un nouveau touchpoint de no-show
+        this.logger.log(`[User: ${userId}] Création d'un nouveau touchpoint 'rdv_no_show' à la place...`);
+        
+        // Utiliser le visitor_id du master lead ou un fallback
+        const visitorIdForTouchpoint = visitorIdFromUtm || (masterLead as any).visitor_id || `calendly_no_show_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+        const touchpointData = {
+          visitor_id: visitorIdForTouchpoint,
+          master_lead_id: masterLead.id,
+          user_id: userId,
+          integration_type: 'calendly' as IntegrationType,
+          event_type: 'rdv_no_show',
+          status: 'no_show', // Définir directement le statut 'no_show'
+          event_data: {
+            calendly_event_uri: eventUri,
+            scheduled_time: inviteePayload.scheduled_event?.start_time,
+            event_name: inviteePayload.event_type?.name,
+            event_type_uri: inviteePayload.event_type?.uri,
+            event_id: eventUri?.split('/').pop() || inviteePayload.scheduled_event?.uuid,
+            invitee_email: email,
+            invitee_name: invitee.name,
+            invitee_uri: inviteePayload.uri
+          },
+          outcome_data: outcomeData,
+          page_url: inviteePayload.tracking?.utm_source
+            ? `utm_source=${inviteePayload.tracking.utm_source}`
+            : undefined
+        };
+
+        try {
+          const touchpoint = await this.touchpointsService.create(touchpointData);
+          this.logger.log(`[User: ${userId}] Nouveau touchpoint 'rdv_no_show' créé: ${touchpoint.id}`);
+          
+          return {
+            success: true,
+            message: 'Nouveau touchpoint de no-show créé',
+            lead_id: masterLead.id,
+            touchpoint_id: touchpoint.id
+          };
+        } catch (touchpointError) {
+          this.logger.error(`[User: ${userId}] Erreur lors de la création du touchpoint de no-show: ${touchpointError.message}`, touchpointError.stack);
+          return { success: false, error: `Erreur de création du touchpoint: ${touchpointError.message}` };
+        }
+      }
+    } catch (error) {
+      this.logger.error(`[User: ${userId}] Erreur majeure lors du traitement de _handleInviteeNoShowCreated: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Processing invitee_no_show.created failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Traite un événement de suppression de no-show (rétablissement du statut du RDV)
+   * @param inviteePayload Données du payload Calendly (invitee, scheduled_event, etc.)
+   * @param userId ID de l'utilisateur FunnelDoctor
+   * @returns Objet avec statut de succès et données associées
+   */
+  private async _handleInviteeNoShowDeleted(inviteePayload: any, userId: string) {
+    this.logger.log(`[User: ${userId}] Traitement d'un événement invitee_no_show.deleted`);
+
+    // Vérifier que les données essentielles sont présentes
+    if (!inviteePayload || !inviteePayload.invitee || !inviteePayload.invitee.email) {
+      this.logger.error(`[User: ${userId}] Données d'invité manquantes dans le payload invitee_no_show.deleted`);
+      return { success: false, error: 'Missing invitee data' };
+    }
+
+    const invitee = inviteePayload.invitee;
+    const email = invitee.email;
+    const eventUri = inviteePayload.scheduled_event?.uri;
+    this.logger.log(`[User: ${userId}] Email invité (suppression no-show): ${email}, URI de l'événement: ${eventUri || 'non disponible'}`);
+
+    // Tenter de récupérer le visitor_id des UTM
+    let visitorIdFromUtm = this.extractVisitorIdFromResource(inviteePayload);
+    this.logger.log(`[User: ${userId}] Visitor ID depuis UTM (suppression no-show): ${visitorIdFromUtm || 'non trouvé'}`);
+
+    try {
+      // Essayer de trouver le master_lead via email
+      this.logger.log(`[User: ${userId}] Recherche MasterLead existant avec email=${email}`);
+      const masterLead = await this.masterLeadService.findOrCreateMasterLead(
+        { email: email, visitor_id: visitorIdFromUtm },
+        userId,
+        'calendly'
+      );
+
+      if (!masterLead) {
+        this.logger.warn(`[User: ${userId}] Aucun MasterLead trouvé pour la suppression de no-show (email: ${email}). Impossible de restaurer le statut du RDV.`);
+        return { success: true, message: 'MasterLead not found for no-show deletion event, no update possible.' };
+      }
+      this.logger.log(`[User: ${userId}] MasterLead trouvé pour suppression de no-show: ID=${masterLead.id}`);
+
+      // Préparer les données pour rechercher le touchpoint existant (chercher soit rdv_scheduled original ou rdv_no_show)
+      const searchParams = {
+        user_id: userId,
+        master_lead_id: masterLead.id,
+        event_type: 'rdv_scheduled', // On cherche d'abord le RDV programmé original
+        event_data: {}
+      };
+      
+      // Utiliser l'URI de l'événement pour trouver le RDV spécifique à restaurer
+      if (eventUri) {
+        searchParams.event_data = {
+          calendly_event_uri: eventUri
+        };
+      }
+
+      // Déterminer si le RDV est dans le futur, le présent ou le passé
+      const now = new Date();
+      const eventEndTime = inviteePayload.scheduled_event?.end_time ? new Date(inviteePayload.scheduled_event.end_time) : null;
+      // Typons explicitement la variable pour éviter l'erreur de compatibilité
+      let newStatus: 'scheduled' | 'completed' = 'scheduled';  // Statut par défaut
+      
+      // Si l'heure de fin est passée, considérer le RDV comme complété (heuristique)
+      if (eventEndTime && eventEndTime < now) {
+        newStatus = 'completed';
+        this.logger.log(`[User: ${userId}] L'heure de fin du RDV est déjà passée, restauration avec statut 'completed'`);
+      } else {
+        this.logger.log(`[User: ${userId}] L'heure de fin du RDV n'est pas encore passée, restauration avec statut 'scheduled'`);
+      }
+      
+      // Préparer les données pour outcome_data (suppression des infos de no-show)
+      const outcomeData = {
+        is_no_show: false,
+        no_show_time: null,
+        restored_at: new Date().toISOString(),
+        restored_status: newStatus
+      };
+
+      this.logger.log(`[User: ${userId}] Recherche du touchpoint pour restauration après suppression de no-show: ${JSON.stringify(searchParams)}`);
+      
+      // D'abord essayer de trouver un touchpoint rdv_no_show ou rdv_scheduled avec status='no_show'
+      const updateResult = await this.touchpointsService.findAndUpdateByEvent(
+        searchParams,
+        newStatus,  // nouveau statut basé sur notre logique (scheduled ou completed)
+        outcomeData
+      );
+
+      if (updateResult.success && updateResult.touchpoint) {
+        this.logger.log(`[User: ${userId}] Statut du touchpoint restauré avec succès: ${updateResult.touchpoint.id} -> '${newStatus}'`);
+        return {
+          success: true,
+          message: `RDV restauré avec statut '${newStatus}' après suppression du no-show`,
+          lead_id: masterLead.id,
+          touchpoint_id: updateResult.touchpoint.id,
+          new_status: newStatus
+        };
+      } else {
+        this.logger.warn(`[User: ${userId}] Aucun touchpoint à restaurer n'a été trouvé: ${updateResult.message}`);
+        return { 
+          success: true, 
+          message: 'Aucun touchpoint correspondant trouvé pour la suppression de no-show. Opération ignorée.'
+        };
+      }
+    } catch (error) {
+      this.logger.error(`[User: ${userId}] Erreur majeure lors du traitement de _handleInviteeNoShowDeleted: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Processing invitee_no_show.deleted failed: ${error.message}`);
     }
   }
 }
