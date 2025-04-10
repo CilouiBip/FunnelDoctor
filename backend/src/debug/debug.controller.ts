@@ -1,6 +1,8 @@
 import { Controller, Get, Inject, Logger } from '@nestjs/common';
 import { CalendlyV2Service } from '../calendly-v2/calendly-v2.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { WebhooksService } from '../webhooks/webhooks.service';
+import { IclosedWebhookDto } from '../webhooks/dto/iclosed-webhook.dto';
 
 @ApiTags('Debug')
 @Controller('debug')
@@ -9,7 +11,8 @@ export class DebugController {
 
   constructor(
     @Inject('IS_DEBUG_ENABLED') private readonly isDebugEnabled: boolean,
-    private readonly calendlyV2Service: CalendlyV2Service
+    private readonly calendlyV2Service: CalendlyV2Service,
+    private readonly webhooksService: WebhooksService
   ) {}
 
   @Get()
@@ -83,5 +86,89 @@ export class DebugController {
     };
   }
 
+  @Get('test-iclosed-booked')
+  @ApiOperation({ summary: 'Test iClosed Call Booked logic directly' })
+  @ApiResponse({ status: 200, description: 'iClosed Call Booked test results' })
+  async testIclosedCallBooked() {
+    this.logger.log('[TEST DIRECT ICLOSED BOOKED] Démarrage du test direct de la logique de réservation iClosed');
+    
+    // Préparer les données de test pour simuler une réservation iClosed
+    const fakePayloadBooked: Partial<IclosedWebhookDto> = { 
+      apiKey: '3b5833bf-609f-494d-be58-1efee8fdec6e', // Utilise la clé API fournie
+      email: 'test-booked-iclosed@funneldoctor.test',
+      visitorId: 'fd_test_visitor_booked_iclosed',
+      callStartTime: new Date().toISOString() 
+    };
+    
+    this.logger.log(`[TEST DIRECT ICLOSED BOOKED] Payload: ${JSON.stringify(fakePayloadBooked)}`);
+    
+    try {
+      await this.webhooksService.handleIclosedWebhook(fakePayloadBooked as IclosedWebhookDto);
+      
+      this.logger.log('[TEST DIRECT ICLOSED BOOKED] Test réussi');
+      return { 
+        success: true, 
+        message: 'Test direct de la réservation iClosed exécuté avec succès', 
+        payload: fakePayloadBooked,
+        timestamp: new Date().toISOString() 
+      };
+    } catch (error) {
+      this.logger.error(`[TEST DIRECT ICLOSED BOOKED] Erreur: ${error.message}`, error.stack);
+      return { 
+        success: false, 
+        message: 'Erreur lors du test direct de la réservation iClosed', 
+        error: error.message,
+        payload: fakePayloadBooked,
+        timestamp: new Date().toISOString() 
+      };
+    }
+  }
+
+  @Get('test-iclosed-outcome-sale')
+  @ApiOperation({ summary: 'Test iClosed Call Outcome Sale logic directly' })
+  @ApiResponse({ status: 200, description: 'iClosed Call Outcome Sale test results' })
+  async testIclosedCallOutcomeSale() {
+    this.logger.log('[TEST DIRECT ICLOSED OUTCOME SALE] Démarrage du test direct de la logique de résultat de vente iClosed');
+    
+    // Récupérer l'heure de début d'appel utilisée dans le test précédent
+    // Pour des raisons de stabilité des tests, on utilise la même heure exacte
+    const callStartTime = new Date().toISOString();
+    
+    // Préparer les données de test pour simuler un résultat d'appel avec vente
+    const fakePayloadOutcome: Partial<IclosedWebhookDto> = {
+      apiKey: '3b5833bf-609f-494d-be58-1efee8fdec6e',
+      email: 'test-booked-iclosed@funneldoctor.test', // MEME EMAIL que le test précédent
+      visitorId: 'fd_test_visitor_booked_iclosed', // MEME VISITOR ID que le test précédent
+      callStartTime: callStartTime, // Pour ce test, on utilise une nouvelle heure, mais en pratique ce serait la même
+      callOutcome: 'Sale', 
+      dealValue: 997,
+      productName: 'Formation XYZ',
+      dealTransactionType: 'one_time',
+      outcomeNotes: 'Test de résultat de vente via l\'API de débogage'
+    };
+    
+    this.logger.log(`[TEST DIRECT ICLOSED OUTCOME SALE] Payload: ${JSON.stringify(fakePayloadOutcome)}`);
+    
+    try {
+      await this.webhooksService.handleIclosedWebhook(fakePayloadOutcome as IclosedWebhookDto);
+      
+      this.logger.log('[TEST DIRECT ICLOSED OUTCOME SALE] Test réussi');
+      return { 
+        success: true, 
+        message: 'Test direct du résultat de vente iClosed exécuté avec succès', 
+        payload: fakePayloadOutcome,
+        timestamp: new Date().toISOString() 
+      };
+    } catch (error) {
+      this.logger.error(`[TEST DIRECT ICLOSED OUTCOME SALE] Erreur: ${error.message}`, error.stack);
+      return { 
+        success: false, 
+        message: 'Erreur lors du test direct du résultat de vente iClosed', 
+        error: error.message,
+        payload: fakePayloadOutcome,
+        timestamp: new Date().toISOString() 
+      };
+    }
+  }
 
 }

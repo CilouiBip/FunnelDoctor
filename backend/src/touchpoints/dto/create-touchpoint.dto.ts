@@ -44,4 +44,8 @@ export class CreateTouchpointDto {
   @IsUUID(4)
   @IsOptional()
   user_id?: string; // Lié à l'utilisateur FunnelDoctor
+
+  @IsString()
+  @IsOptional()
+  status?: 'scheduled' | 'completed' | 'canceled' | 'no_show';
 }
