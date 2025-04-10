@@ -43,6 +43,10 @@ let config = {
     // Configurer le pré-remplissage des liens Calendly
     setupCalendlyPrefill();
     
+    // Injecter le visitorId dans les formulaires d'opt-in
+    // Injecter le visitorId dans les formulaires d'opt-in
+    injectVisitorIdIntoOptinForms();
+    
     // Observer les mutations du DOM pour les nouveaux boutons
     setupMutationObserver();
     
@@ -59,8 +63,8 @@ let config = {
       return window.FunnelDoctor.getVisitorId();
     }
     
-    // Fallback: ru00e9cupu00e9rer directement depuis localStorage
-    return localStorage.getItem('fd_visitor_id') || null;
+    // Fallback: ru00e9cupu00e9rer directement depuis localStorage (prioritu00e9 u00e0 la nouvelle clu00e9)
+    return localStorage.getItem('funnel_doctor_visitor_id') || localStorage.getItem('fd_visitor_id') || null;
   }
   
   // Ru00e9cupu00e9ration des UTM paramu00e8tres stocku00e9s
@@ -350,6 +354,156 @@ let config = {
     });
   }
   
+  // Injecter automatiquement le visitorId dans les formulaires d'opt-in
+  function injectVisitorIdIntoOptinForms() {
+    // Les logs sont conditionnés par config.debug pour ne pas surcharger la console en production
+    if (config.debug) {
+      console.debug('[FD Bridging] Fonction injectVisitorIdIntoOptinForms appelée.');
+    }
+    
+    // Récupérer le visitorId depuis localStorage avec la nouvelle clé funnel_doctor_visitor_id
+    const visitorId = localStorage.getItem('funnel_doctor_visitor_id');
+    if (config.debug) {
+      console.debug('[FD Bridging - Debug Optin] Visitor ID lu:', visitorId);
+    }
+    
+    if (!visitorId) {
+      if (config.debug) {
+        console.debug('[FD Bridging] Pas de visitorId disponible pour l\'injection dans les formulaires');
+      }
+      return;
+    }
+
+    // Fonction pour injecter le visitorId dans un formulaire s'il contient un champ email
+    const injectIntoForm = (form) => {
+      // Vérifier si le formulaire contient un champ email visible avec une heuristique robuste
+      const emailSelector = 'input[type="email"]:not([type="hidden"]), input[name*="email"]:not([type="hidden"]), input[placeholder*="email" i]:not([type="hidden"])';
+      if (config.debug) {
+        console.debug('[FD Bridging - Debug Optin] Sélecteur email utilisé:', emailSelector);
+      }
+      
+      const emailField = form.querySelector(emailSelector);
+      if (config.debug) {
+        console.debug('[FD Bridging - Debug Optin] Champ Email trouvé ?', emailField, 'dans formulaire', form.id || form);
+      }
+      
+      // Déboguer: afficher TOUS les inputs du formulaire pour vérification
+      if (config.debug) {
+        const allFormInputs = form.querySelectorAll('input');
+        console.debug('[FD Bridging - Debug Optin] Tous les champs du formulaire:', allFormInputs);
+      }
+      
+      if (emailField) {
+        console.debug('[FD Bridging - Debug Optin] ✅ Champ email trouvé! Type:', emailField.type, 'Nom:', emailField.name);
+        
+        // Vérifier si le champ visitorId existe déjà
+        const existingField = form.querySelector('input[name="visitorId"]');
+        if (config.debug) {
+          console.debug('[FD Bridging - Debug Optin] Champ visitorId existant ?', existingField);
+        }
+        
+        if (!existingField) {
+          // Créer un nouveau champ caché pour le visitorId
+          if (config.debug) {
+            console.debug('[FD Bridging - Debug Optin] Création d\'un nouveau champ caché visitorId avec valeur:', visitorId);
+          }
+          
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = 'visitorId'; // Doit correspondre au champ attendu par OptinWebhookDto
+          hiddenInput.value = visitorId;
+          hiddenInput.setAttribute('data-fd-added', 'true');
+          
+          // Ajouter le champ au formulaire
+          if (config.debug) {
+            console.debug('[FD Bridging - Debug Optin] Ajout du champ caché au formulaire !');
+          }
+          form.appendChild(hiddenInput);
+          
+          // Vérifier que le champ a bien été ajouté
+          if (config.debug) {
+            const checkAfterAdd = form.querySelector('input[name="visitorId"]');
+            console.debug('[FD Bridging - Debug Optin] Vérification après ajout - champ trouvé ?', checkAfterAdd);
+          }
+          
+          if (config.debug) {
+            console.debug('[FD Bridging] Ajout du visitorId au formulaire:', form);
+          }
+        } else if (config.debug) {
+          console.debug('[FD Bridging] Le formulaire contient déjà un champ visitorId:', form);
+        }
+      } else {
+        console.debug('[FD Bridging - Debug Optin] ❌ Aucun champ email trouvé dans ce formulaire.');
+      }
+    };
+
+    // Traiter les formulaires existants une fois le DOM chargé
+    const processExistingForms = () => {
+      // Chercher tous les formulaires sur la page
+      const forms = document.querySelectorAll('form');
+      console.debug('[FD Bridging - Debug Optin] Formulaires trouvés:', forms.length, forms);
+      
+      if (config.debug) {
+        console.debug(`[FD Bridging] ${forms.length} formulaires trouvés sur la page`);
+      }
+
+      // Parcourir chaque formulaire
+      forms.forEach((form) => {
+        console.debug('[FD Bridging - Debug Optin] Traitement du formulaire:', form.id || form);
+        injectIntoForm(form);
+      });
+    };
+
+    // Attendre que le DOM soit complètement chargé ou exécuter immédiatement si déjà chargé
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', processExistingForms);
+    } else {
+      processExistingForms();
+    }
+    
+    // Observer les nouveaux formulaires ajoutés dynamiquement au DOM
+    if (window.MutationObserver) {
+      const formObserver = new MutationObserver((mutations) => {
+        if (config.debug) {
+          console.debug('[FD Bridging] MutationObserver a détecté des changements dans le DOM');
+        }
+        mutations.forEach(mutation => {
+          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+            mutation.addedNodes.forEach(node => {
+              // Vérifier si c'est un formulaire ou s'il contient des formulaires
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                let forms = [];
+                
+                if (node.tagName === 'FORM') {
+                  forms.push(node);
+                } else if (node.querySelectorAll) {
+                  forms = Array.from(node.querySelectorAll('form'));
+                }
+                
+                // Traiter les formulaires trouvés
+                if (forms.length > 0 && config.debug) {
+                  console.debug(`[FD Bridging] ${forms.length} nouveaux formulaires détectés dynamiquement`);
+                }
+                
+                forms.forEach(injectIntoForm);
+              }
+            });
+          }
+        });
+      });
+      
+      // Démarrer l'observation
+      formObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      if (config.debug) {
+        console.debug('[FD Bridging] Observation des formulaires activée');
+      }
+    }
+  }
+
   // Observer les mutations du DOM pour attacher les handlers aux nouveaux boutons
   function setupMutationObserver() {
     // Vu00e9rifier que MutationObserver est supportu00e9
@@ -358,6 +512,7 @@ let config = {
     const observer = new MutationObserver(mutations => {
       let needsCalendlyUpdate = false;
       let needsPaymentUpdate = false;
+      let needsFormUpdate = false;
       
       mutations.forEach(mutation => {
         if (mutation.type === 'childList' && mutation.addedNodes.length) {
@@ -377,6 +532,11 @@ let config = {
                 )) {
                 needsPaymentUpdate = true;
               }
+              
+              // Vérifier si un formulaire a été ajouté
+              if (node.tagName === 'FORM' || node.querySelector('form')) {
+                needsFormUpdate = true;
+              }
             }
           });
         }
@@ -385,6 +545,10 @@ let config = {
       // N'attacher que les handlers nu00e9cessaires
       if (needsCalendlyUpdate) attachToCalendlyButtons();
       if (needsPaymentUpdate) attachToPaymentButtons();
+      if (needsFormUpdate) {
+        console.log('<<<<<<<<<< [FD Bridging - DEBUG] APPEL injectVisitorIdForms depuis MutationObserver >>>>>>>>>>');
+        injectVisitorIdIntoForms();
+      }
     });
     
     // Observer le document entier
@@ -724,6 +888,8 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.FunnelDoctorBridging = {
     version: VERSION,
     createStripeCheckout,
+    injectVisitorIdIntoOptinForms,
+    getVisitorId,
     init
   };
   
@@ -739,6 +905,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // Fonctions principales
+    injectVisitorIdIntoOptinForms,
     initialize,
     setupFormListener,
     setupCalendlyListener,
