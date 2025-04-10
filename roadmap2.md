@@ -1,4 +1,4 @@
-# FunnelDoctor - Roadmap Révisée MVP v4 (Focus iClosed & Analytics) - MISE À JOUR 08/04/2025
+# FunnelDoctor - Roadmap Révisée MVP v4 (Focus iClosed & Analytics) - MISE À JOUR 10/04/2025
 
 ## Vision MVP Core Réaffirmée
 
@@ -17,7 +17,7 @@
 *   ✅ Traitement complet Webhook Calendly (`invitee.created`): Correction FK `visitors`, ajout colonne `integration_type`, création `touchpoint` finale.
 *   ✅ Snippet JS: Existe (fonctionnalité de base `visitorId`, UTMs).
 *   ✅ Endpoints Webhook iClosed (`/api/webhooks/iclosed`) & Stripe (`/api/payments/webhook`): Existent (logique basique).
-*   ❓ Logique de Stitching: Existe (UTM, Bridge, Fallback) mais robustesse et configuration à valider (Comment UTM arrive? Comment Bridge est peuplé?).
+*   ✅ Logique de Stitching: Validée via tests E2E avec Calendly (UTM), iClosed (via Zapier), et formulaire Opt-in (Bridge).
 *   ❌ Définition Funnel Personnalisé (API/UI): Non fait.
 *   ❌ Calcul KPIs & Analytics Backend: Non fait.
 *   ❌ UI Analytics (Dashboard KPIs, Vue Funnel, Rapport par Source): Non fait.
@@ -59,13 +59,13 @@
     *   **Objectif :** Assurer l'envoi correct des données iClosed (statut confirmé) vers `/api/webhooks/iclosed`.
     *   **Action (Mehdi/CTO) :** Configurer/tester le Zapier. Observer les logs backend FunnelDoctor.
     *   **Mesure de Succès :** Log de réception sur l'endpoint iClosed avec les données attendues.
-    *   **Statut : À FAIRE/VALIDER**
+    *   **Statut : ✅ COMPLÉTÉ (10/04/2025)**
     *   **Priorité : HAUTE**
 *   **MB-1.2.2 : Validation Traitement Webhook iClosed & Stitching**
     *   **Objectif :** Confirmer traitement backend, stitching (comment `visitorId` ou email est récupéré/transmis via Zap ?), et création touchpoint `rdv_scheduled` ou `rdv_confirmed`.
     *   **Action (Windsurf/Mehdi) :** Analyser/Modifier contrôleur/service iClosed. Exécuter test Zapier. Vérifier logs & DB.
     *   **Mesure de Succès :** Touchpoint créé, lié au bon `user_id` et `MasterLead`.
-    *   **Statut : À FAIRE/VALIDER**
+    *   **Statut : ✅ COMPLÉTÉ (10/04/2025)**
     *   **Priorité : HAUTE**
 
 #### **Bloc 1.3 : Validation Tracking Snippet & Stitching `visitorId` (Priorité #3)**
@@ -80,7 +80,8 @@
     *   **Objectif :** Confirmer le stitching `visitorId` pour iClosed.
     *   **Action (Mehdi/CTO/Windsurf) :** 1. Visite page (note `visitorId`). 2. Simuler RDV iClosed via Zapier, **assurer transmission `visitorId`** (clarifier comment Zapier récupère/envoie ce `visitorId`). Email différent. Vérifier logs & DB.
     *   **Mesure de Succès :** Stitching utilise `visitorId` reçu, touchpoint lié au `MasterLead` initial.
-    *   **Statut : À FAIRE (Clarification requise)**
+    *   **Statut : ✅ COMPLÉTÉ (10/04/2025)**
+    *   **Notes :** Solution clarifiée et validée - Pour iClosed, le `visitorId` est transmis via le paramètre first_utm_content qui est capturé par iClosed et accessible dans Zapier. Page de test créée.
     *   **Priorité : HAUTE**
 
 #### **Bloc 1.4 : Finalisation Autres Intégrations (Priorité #4)**
@@ -98,7 +99,8 @@
 *   **MB-1.4.3 : Validation Complète Opt-in (Webhook + Stitching/Bridge)**
     *   **Action (Mehdi/Windsurf) :** Tester webhook opt-in. Vérifier création `MasterLead` et potentielle alimentation table `bridge`.
     *   **Mesure de Succès :** Touchpoint `optin` créé et lead associé. `bridge` alimenté si applicable.
-    *   **Statut : À FAIRE/VALIDER**
+    *   **Statut : ✅ COMPLÉTÉ (09/04/2025)**
+    *   **Notes :** Test réalisé avec formulaire opt-in, la table bridge est correctement alimentée avec l'association email/visitorId.
     *   **Priorité : MOYENNE**
 
 ---
@@ -124,11 +126,12 @@
 
 #### **Bloc 2.2 : Calcul des KPIs & Analytics**
 
-*   **MB-2.2.1 : Décision Archi Statut RDV "Réalisé" & Attribution Vidéo**
-    *   **Objectif :** Décider techniquement COMMENT tracker RDV "réalisé" et attribuer à une vidéo YT source.
-    *   **Action (CTO/Mehdi) :** Discussion et décision technique.
-    *   **Mesure de Succès :** Stratégies claires définies.
-    *   **Statut : À FAIRE**
+*   **MB-2.2.1 : Implémentation Tracker RDV "Réalisé" (Calendly & iClosed)**
+    *   **Objectif :** Implémenter la logique de suivi des RDV réalisés, annulés et no-show.
+    *   **Action :** Modification des services Calendly et iClosed pour gérer les statuts de RDV.
+    *   **Mesure de Succès :** Touchpoints mis à jour correctement avec les statuts appropriés.
+    *   **Statut : ✅ COMPLÉTÉ (10/04/2025)** 
+    *   **Notes :** Partie Calendly : ✅ (Implémenté Annulation + No Show backend, Heuristique 'Completed'). Partie iClosed : ✅ (Implémenté et Validé E2E via Zapier).
     *   **Priorité : HAUTE**
 *   **MB-2.2.2 : Implémenter `FunnelAnalyticsService` (Calcul KPIs)**
     *   **Objectif :** Logique backend pour calculer KPIs clés (Leads, RDV Gen, RDV Réal, Ventes, CA, Taux Conv...) par période/source/vidéo, basée sur funnel user.
@@ -174,7 +177,8 @@
 *   **MB-3.1.2 : Template Zapier iClosed Finalisé**
     *   **Action (CTO/Mehdi) :** Créer et tester le template Zapier partageable.
     *   **Mesure de Succès :** Template fonctionnel et facile à utiliser.
-    *   **Statut : À FAIRE**
+    *   **Statut : ✅ COMPLÉTÉ (10/04/2025)**
+    *   **Notes :** Documentation détaillée créée pour les deux Zaps (Contact Call Booked et Call Outcome).
     *   **Priorité : HAUTE**
 
 #### **Bloc 3.2 : Refactoring & Améliorations Techniques**

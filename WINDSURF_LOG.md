@@ -1,3 +1,125 @@
+## Intégration iClosed, finalisation Calendly et suivi des RDV (MB-1.2 & MB-2.2.1)
+
+### [10/04/2025] Finalisation de l'intégration iClosed et du tracking complet des RDV (Webhooks, Zapier, Stitching)
+
+#### 1. Intégration iClosed complète (MB-1.2)
+
+- ✅ **Configuration de l'intégration par Zapier**
+  - Analyse des possibilités d'intégration entre iClosed et FunnelDoctor
+  - Découverte d'une limitation technique : iClosed ne peut pas lire directement le cookie FunnelDoctor
+  - Solution retenue : Transmission du `visitorId` via le paramètre `first_utm_content` et Zapier
+
+- ✅ **Mise à jour du DTO `IclosedWebhookDto`**
+  - Modification pour rendre le `visitorId` optionnel via `@IsOptional()` et `@IsString()`
+  - Documentation du champ pour indiquer les deux sources possibles (cookie ou first_utm_content)
+
+- ✅ **Amélioration du `WebhooksService.handleIclosedWebhook`**
+  - Refonte de la logique pour gérer les cas avec et sans `visitorId`
+  - Implémentation d'une stratégie de fallback pour identifier les leads par email lorsque `visitorId` est absent
+  - Génération d'identifiants uniques pour les cas où `visitorId` est absent
+
+- ✅ **Conception et documentation de 2 Zaps distincts dans Zapier**
+  - **Zap #1 : Contact Call Booked**
+    - Trigger : Événement de réservation d'appel dans iClosed
+    - Extraction du `visitorId` depuis le champ `first_utm_content`
+    - Envoi à FunnelDoctor via webhook avec toutes les métadonnées incluant `visitorId`
+  - **Zap #2 : Call Outcome**
+    - Trigger : Événement de résultat d'appel dans iClosed
+    - Envoi à FunnelDoctor des données de résultat sans `visitorId` (non disponible dans ce contexte)
+    - Utilisation de l'email et du `callStartTime` comme identifiants de corrélation
+
+- ✅ **Création d'une page de test dédiée pour iClosed**
+  - Développement de `test_iclosed_embed.html` pour simuler l'intégration complète
+  - Mise en place de code JavaScript pour la manipulation des cookies UTM
+  - Configuration de l'extraction automatique des paramètres d'URL pour alimenter `first_utm_content`
+  - Documentation du processus complet pour les tests futurs
+
+#### 2. Finalisation du suivi des RDV réalisés (MB-2.2.1)
+
+- ✅ **Débogage et amélioration du tracking des statuts de RDV iClosed**
+  - Correction de 2 bugs critiques dans la méthode `handleIclosedWebhook` :
+    1. **Recherche de touchpoint existant** : Amélioration de la recherche en utilisant email + callStartTime dans event_data
+    2. **Création incorrecte de touchpoints payment** : Correction de la condition pour créer des touchpoints payment uniquement pour les ventes réelles (`callOutcome === 'Sale'`)
+  - Tests E2E pour valider les corrections et confirmer le fonctionnement
+
+- ✅ **Implémentation complète de la gestion des RDV Calendly**
+  - Support des événements d'annulation : `invitee.canceled`
+  - Support des événements no-show : `invitee.no_show.created` et `invitee.no_show.deleted`
+  - Mise à jour des statuts de touchpoints en fonction des événements reçus
+
+#### 3. Documentation détaillée des Zaps Zapier pour l'intégration iClosed (MB-3.1.2)
+
+##### ZAP #1 : Contact Call Booked (Réservation initiale de RDV)
+
+**Étape 1 : Configurer le Trigger (Déclencheur)**
+1. **Application** : Sélectionner `iClosed`
+2. **Événement déclencheur** : Choisir `Contact Call Booked`
+3. **Connexion au compte** :
+   - Connecter compte iClosed
+   - Autoriser Zapier à accéder au compte
+4. **Test du trigger** :
+   - Cliquer sur "Test trigger"
+   - Vérifier les données récupérées
+
+**Étape 2 : Récupérer le visitorId (depuis first_utm_content)**
+1. **Application** : Sélectionner `Formatter by Zapier`
+2. **Action Event** : Choisir `Text`
+3. **Transformation** : Sélectionner `Get Value from First UTM Content`
+   - **Input** : Choisir le champ `First UTM Content` du déclencheur iClosed
+   - **Output** : Le visitorId extrait (si présent)
+
+**Étape 3 : Configurer l'action Webhook**
+1. **Application** : Sélectionner `Webhooks by Zapier`
+2. **Action Event** : Choisir `POST`
+3. **URL** : Entrer `https://{URL_BACKEND_FUNNELDOCTOR}/api/webhooks/iclosed`
+4. **Payload Type** : Sélectionner `json`
+5. **Data** : Configurer les paires clé-valeur suivantes :
+   - `apiKey` : Clé API FunnelDoctor
+   - `email` : Email du contact (champ "Invitee Email")
+   - `visitorId` : visitorId extrait (étape 2)
+   - `callStartTime` : Date/heure du RDV (champ "Event UTC Start Time")
+   - `source` : "Zapier - iClosed Call Booked"
+
+##### ZAP #2 : Call Outcome (Résultat d'appel)
+
+**Étape 1 : Configurer le Trigger (Déclencheur)**
+1. **Application** : Sélectionner `iClosed`
+2. **Événement déclencheur** : Choisir `Call Outcome`
+3. **Test du trigger** :
+   - Vérifier les données récupérées
+
+**Étape 2 : Configurer l'action Webhook**
+1. **Application** : Sélectionner `Webhooks by Zapier`
+2. **Action Event** : Choisir `POST`
+3. **URL** : Entrer `https://{URL_BACKEND_FUNNELDOCTOR}/api/webhooks/iclosed`
+4. **Payload Type** : Sélectionner `json`
+5. **Data** : Configurer les paires clé-valeur :
+   - `apiKey` : Clé API FunnelDoctor
+   - `email` : Email du contact
+   - `callStartTime` : Date/heure du RDV
+   - `callOutcome` : Résultat de l'appel ("Sale" ou "NO_SALE")
+   - `noSaleReason` : Raison de non-vente (si applicable)
+   - `objection` : Objection principale (si applicable)
+   - `outcomeNotes` : Notes sur le résultat
+   - `dealValue` : Montant de la vente (si applicable)
+   - `productName` : Nom du produit vendu (si applicable)
+   - `dealTransactionType` : Type de transaction
+   - `source` : "Zapier - iClosed Call Outcome"
+
+**IMPORTANT** : Le champ `visitorId` est intentionnellement absent dans Zap #2 car il n'est pas disponible dans cet événement. Le backend utilise l'email et le callStartTime pour faire le lien.
+
+#### 4. Synthèse des avantages et prochaines étapes
+
+- ✅ **Architecture de stitching robuste**
+  - Suivi du parcours complet : Visite -> Optin -> RDV Programmé -> RDV Réalisé -> Vente
+  - Support de multiples intégrations (Calendly, iClosed) pour les RDV
+  - Multiple stratégies de stitching (cookies, UTM, fallback par email)
+
+- ✅ **Base technique solide pour les analytics**
+  - Toutes les données nécessaires sont désormais capturées et stockées correctement
+  - Les événements critiques (annulation, no-show, vente) sont trackés avec leurs métadonnées
+  - La prochaine phase (MB-2.2.2 et MB-2.2.3) peut commencer : développement des analytics et des KPIs
+
 ## Implémentation de l'Injection JS du visitorId dans les formulaires (MB-1.5.1)
 
 ### [09/04/2025] Développement et validation de l'injection automatique du visitorId dans les formulaires HTML
