@@ -1,4 +1,5 @@
 import { Controller, Get, Inject, Logger } from '@nestjs/common';
+import { CalendlyV2Service } from '../calendly-v2/calendly-v2.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('Debug')
@@ -7,7 +8,8 @@ export class DebugController {
   private readonly logger = new Logger(DebugController.name);
 
   constructor(
-    @Inject('IS_DEBUG_ENABLED') private readonly isDebugEnabled: boolean
+    @Inject('IS_DEBUG_ENABLED') private readonly isDebugEnabled: boolean,
+    private readonly calendlyV2Service: CalendlyV2Service
   ) {}
 
   @Get()
@@ -80,4 +82,6 @@ export class DebugController {
       timestamp: new Date().toISOString(),
     };
   }
+
+
 }

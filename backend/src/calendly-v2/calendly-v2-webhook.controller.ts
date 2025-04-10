@@ -1,4 +1,5 @@
   import {
+  Body,
   Controller,
   Headers,
   HttpCode,
@@ -7,6 +8,7 @@
   Req,
   InternalServerErrorException
 } from '@nestjs/common';
+import { Request } from 'express';
 import { CalendlyV2Service } from './calendly-v2.service';
 import { CalendlyWebhookPayloadDto } from './dto/webhook-payload.dto';
 
@@ -86,4 +88,57 @@ export class CalendlyV2WebhookController {
 
   // Note: Les anciennes méthodes handleInviteeCreated et handleInviteeCanceled ont été supprimées
   // car toute la logique est maintenant gérée par la méthode processWebhookEvent du service
+
+  /**
+   * Point de terminaison spécifique pour les webhooks d'annulation Calendly API v2
+   * Endpoint: POST /api/rdv/webhook-v2/canceled
+   * 
+   * Gère les événements 'invitee.canceled' spécifiquement
+   */
+  @Post('webhook-v2/canceled')
+  @HttpCode(200) // Calendly attend un statut 200 OK
+  async handleCancellation(
+    @Body() payload: CalendlyWebhookPayloadDto,
+    @Headers('calendly-webhook-signature') signature: string,
+  ) {
+    // Log brut du webhook
+    this.logger.log('<<< CANCELLATION WEBHOOK RECEIVED on /webhook-v2/canceled >>>');
+    try {
+      if (payload && payload.event) {
+        this.logger.log(`Webhook annulation reçu: ${payload.event}`);
+      } else {
+        this.logger.warn('Payload d\'annulation reçu sans propriété event');
+        return { status: 'error', message: 'Payload invalide' };
+      }
+      
+      // TODO: Implémenter la vérification de signature Calendly ici (MB-3.2.1)
+      
+      try {
+        // Vérifier que c'est bien un événement d'annulation
+        if (payload.event !== 'invitee.canceled') {
+          this.logger.warn(`Type d'événement incorrect reçu sur /webhook-v2/canceled: ${payload.event}`);
+          return { status: 'error', message: 'Type d\'\u00e9v\u00e9nement incorrect' };
+        }
+        
+        // Appel au service pour traiter l'annulation
+        const result = await this.calendlyV2Service.processWebhookEvent(payload);
+        
+        if (result.success) {
+          return { status: 'success', result };
+        } else {
+          const resultObj = result as any;
+          const errorMessage = resultObj.error || 'Unknown error processing Calendly cancellation webhook';
+          
+          this.logger.error(`Erreur traitement webhook d'annulation Calendly: ${errorMessage}`);
+          throw new InternalServerErrorException(errorMessage);
+        }
+      } catch (error) {
+        this.logger.error(`Erreur lors du traitement du webhook d'annulation: ${error.message}`, error.stack);
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error(`Erreur lors de la lecture du payload d'annulation: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Invalid payload format');
+    }
+  }
 }

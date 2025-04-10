@@ -507,76 +507,114 @@ export class CalendlyV2Service {
 
     const invitee = inviteePayload.invitee;
     const email = invitee.email;
-     this.logger.log(`[User: ${userId}] Email invité (annulation): ${email}`);
+    const eventUri = inviteePayload.scheduled_event?.uri;
+    this.logger.log(`[User: ${userId}] Email invité (annulation): ${email}, URI de l'événement: ${eventUri || 'non disponible'}`);
 
     // Tenter de récupérer le visitor_id des UTM
     let visitorIdFromUtm = this.extractVisitorIdFromResource(inviteePayload);
     this.logger.log(`[User: ${userId}] Visitor ID depuis UTM (annulation): ${visitorIdFromUtm || 'non trouvé'}`);
 
-    // Essayer de trouver le master_lead via email ou visitorId
-    // On ne crée pas de nouveau lead pour une annulation, on cherche l'existant
+    // Essayer de trouver le master_lead via email
     try {
-       this.logger.log(`[User: ${userId}] Recherche MasterLead existant avec email=${email}, visitor_id=${visitorIdFromUtm}`);
-      // Utiliser findOrCreateMasterLead car findMasterLeadByDetails n'existe pas
-      // Note: cela pourrait créer un lead si aucun n'existe déjà, ce qui n'est pas idéal pour une annulation
+      this.logger.log(`[User: ${userId}] Recherche MasterLead existant avec email=${email}`);
       const masterLead = await this.masterLeadService.findOrCreateMasterLead(
-         { email: email, visitor_id: visitorIdFromUtm },
-         userId,
-         'calendly' // Ajouter le paramètre 'source' requis
+        { email: email, visitor_id: visitorIdFromUtm },
+        userId,
+        'calendly'
       );
 
       if (!masterLead) {
-         this.logger.warn(`[User: ${userId}] Aucun MasterLead trouvé pour l'annulation (email: ${email}, visitorId: ${visitorIdFromUtm}). Impossible de créer le touchpoint d'annulation.`);
-         // Retourner succès car l'événement est traité (on ne peut rien faire de plus)
-         return { success: true, message: 'MasterLead not found for cancellation event, touchpoint skipped.' };
+        this.logger.warn(`[User: ${userId}] Aucun MasterLead trouvé pour l'annulation (email: ${email}). Impossible de mettre à jour le statut du RDV.`);
+        return { success: true, message: 'MasterLead not found for cancellation event, no update possible.' };
       }
-       this.logger.log(`[User: ${userId}] MasterLead trouvé pour annulation: ID=${masterLead.id}`);
+      this.logger.log(`[User: ${userId}] MasterLead trouvé pour annulation: ID=${masterLead.id}`);
 
-      // Utiliser le visitor_id du master lead trouvé ou un fallback si vraiment nécessaire
-      // Utiliser visitorIdFromUtm avec fallback, car masterLead.visitor_id peut ne pas exister sur le type Lead
-      const visitorIdForTouchpoint = visitorIdFromUtm || (masterLead as any).visitor_id || `calendly_cancel_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+      // Préparer les données pour mettre à jour le touchpoint existant
+      const searchParams = {
+        user_id: userId,
+        event_type: 'rdv_scheduled',
+        master_lead_id: masterLead.id,
+        event_data: {}
+      };
+      
+      // Utiliser l'URI de l'événement pour trouver le RDV spécifique à annuler
+      if (eventUri) {
+        searchParams.event_data = {
+          calendly_event_uri: eventUri
+        };
+      }
+      
+      // Préparer les données d'annulation à stocker dans outcome_data
+      const outcomeData = {
+        canceled_time: inviteePayload.cancellation?.canceled_at || new Date().toISOString(),
+        canceler_type: inviteePayload.cancellation?.canceler_type,
+        cancellation_reason: inviteePayload.cancellation?.reason
+      };
 
-      // Créer un touchpoint pour l'événement rdv_canceled
-      try {
+      this.logger.log(`[User: ${userId}] Recherche du touchpoint 'rdv_scheduled' pour mise à jour: ${JSON.stringify(searchParams)}`);
+      
+      // Rechercher et mettre à jour le touchpoint existant
+      const updateResult = await this.touchpointsService.findAndUpdateByEvent(
+        searchParams,
+        'canceled',
+        outcomeData
+      );
+
+      if (updateResult.success && updateResult.touchpoint) {
+        this.logger.log(`[User: ${userId}] Statut du touchpoint mis à jour avec succès: ${updateResult.touchpoint.id} -> 'canceled'`);
+        return {
+          success: true,
+          message: 'RDV marqué comme annulé avec succès',
+          lead_id: masterLead.id,
+          touchpoint_id: updateResult.touchpoint.id
+        };
+      } else {
+        this.logger.warn(`[User: ${userId}] Impossible de trouver un touchpoint 'rdv_scheduled' existant: ${updateResult.message}`);
+        
+        // Si aucun touchpoint n'est trouvé, créer un nouveau touchpoint d'annulation
+        this.logger.log(`[User: ${userId}] Création d'un nouveau touchpoint 'rdv_canceled' à la place...`);
+        
+        // Utiliser le visitor_id du master lead ou un fallback
+        const visitorIdForTouchpoint = visitorIdFromUtm || (masterLead as any).visitor_id || `calendly_cancel_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
         const touchpointData = {
           visitor_id: visitorIdForTouchpoint,
           master_lead_id: masterLead.id,
-          user_id: userId, // Ajouter le userId au touchpoint
+          user_id: userId,
           integration_type: 'calendly' as IntegrationType,
           event_type: 'rdv_canceled',
+          status: 'canceled', // Définir directement le statut 'canceled'
           event_data: {
-            calendly_event_uri: inviteePayload.scheduled_event?.uri,
+            calendly_event_uri: eventUri,
             scheduled_time: inviteePayload.scheduled_event?.start_time,
-            canceled_time: inviteePayload.cancellation?.canceled_at || new Date().toISOString(), // Utiliser la date d'annulation si fournie
-            canceler_type: inviteePayload.cancellation?.canceler_type,
-            cancellation_reason: inviteePayload.cancellation?.reason,
-            invitee_email: email,
-            invitee_name: invitee.name,
             event_name: inviteePayload.event_type?.name,
             event_type_uri: inviteePayload.event_type?.uri,
-            event_id: inviteePayload.scheduled_event?.uri?.split('/').pop() || inviteePayload.scheduled_event?.uuid,
+            event_id: eventUri?.split('/').pop() || inviteePayload.scheduled_event?.uuid,
+            invitee_email: email,
+            invitee_name: invitee.name,
             invitee_uri: inviteePayload.uri
           },
+          outcome_data: outcomeData,
           page_url: inviteePayload.tracking?.utm_source
             ? `utm_source=${inviteePayload.tracking.utm_source}`
-            : undefined,
-           // timestamp: new Date(payload.created_at) // Utiliser le created_at du webhook parent?
+            : undefined
         };
 
-        this.logger.log(`[User: ${userId}] Préparation des données du touchpoint d'annulation: ${JSON.stringify(touchpointData)}`);
-        const touchpoint = await this.touchpointsService.create(touchpointData);
-        this.logger.log(`[User: ${userId}] Touchpoint 'rdv_canceled' créé avec succès: ${touchpoint.id}`);
-
-      } catch (touchpointError) {
-        this.logger.error(`[User: ${userId}] Erreur lors de la création du touchpoint d'annulation: ${touchpointError.message}`, touchpointError.stack);
-        // Logguer mais considérer l'événement comme traité
+        try {
+          const touchpoint = await this.touchpointsService.create(touchpointData);
+          this.logger.log(`[User: ${userId}] Nouveau touchpoint 'rdv_canceled' créé: ${touchpoint.id}`);
+          
+          return {
+            success: true,
+            message: 'Nouveau touchpoint d\'annulation créé',
+            lead_id: masterLead.id,
+            touchpoint_id: touchpoint.id
+          };
+        } catch (touchpointError) {
+          this.logger.error(`[User: ${userId}] Erreur lors de la création du touchpoint d'annulation: ${touchpointError.message}`, touchpointError.stack);
+          return { success: false, error: `Erreur de création du touchpoint: ${touchpointError.message}` };
+        }
       }
-
-      return {
-        success: true,
-        message: 'Webhook d\'annulation traité',
-        lead_id: masterLead.id,
-      };
     } catch (error) {
       this.logger.error(`[User: ${userId}] Erreur majeure lors du traitement de _handleInviteeCanceled: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Processing invitee.canceled failed: ${error.message}`);

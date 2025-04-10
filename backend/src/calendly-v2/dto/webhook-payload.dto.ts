@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsISO8601, IsObject, IsOptional, IsString, ValidateNested, IsArray, IsBoolean } from 'class-validator';
 
 /**
  * Structure des données d'événement reçues dans le webhook Calendly
@@ -12,6 +12,10 @@ export class CalendlyEventTypeDto {
   @IsString()
   @IsOptional()
   uuid?: string;
+  
+  @IsString()
+  @IsOptional()
+  uri?: string;
 }
 
 /**
@@ -19,7 +23,8 @@ export class CalendlyEventTypeDto {
  */
 export class CalendlyInviteeDto {
   @IsString()
-  email: string;
+  @IsOptional() // Rendu optionnel car peut être absent dans certains types de webhooks
+  email?: string;
   
   @IsString()
   @IsOptional()
@@ -32,6 +37,26 @@ export class CalendlyInviteeDto {
   @IsString()
   @IsOptional()
   uuid?: string;
+  
+  @IsString()
+  @IsOptional()
+  uri?: string;
+  
+  @IsString()
+  @IsOptional()
+  status?: string; // 'active', 'canceled', etc.
+  
+  @IsBoolean()
+  @IsOptional()
+  rescheduled?: boolean;
+}
+
+/**
+ * Structure pour les données d'adhésion à un événement (utilisateurs associés)
+ */
+export class EventMembershipDto {
+  @IsString()
+  user: string; // URI de l'utilisateur associé - Requis quand présent
 }
 
 /**
@@ -61,6 +86,18 @@ export class CalendlyScheduledEventDto {
   @IsString()
   @IsOptional()
   organization?: string;
+  
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EventMembershipDto)
+  @IsOptional()
+  event_memberships?: EventMembershipDto[]; // Liste des membres associés à l'événement
+  
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CalendlyEventTypeDto)
+  @IsOptional()
+  event_type?: CalendlyEventTypeDto; // Type d'événement associé
 }
 
 /**
@@ -128,6 +165,10 @@ export class CancellationDto {
   @IsString()
   @IsOptional()
   canceled_by?: string; // URI de la personne qui a annulé
+  
+  @IsISO8601()
+  @IsOptional()
+  canceled_at?: string; // Date d'annulation au format ISO
 }
 
 /**
@@ -181,6 +222,10 @@ export class CalendlyPayloadDto {
 export class CalendlyWebhookPayloadDto {
   @IsString()
   event: string; // 'invitee.created', 'invitee.canceled', etc.
+  
+  @IsISO8601()
+  @IsOptional()
+  created_at?: string; // Date de création de l'événement au format ISO
   
   @IsObject()
   @ValidateNested()
