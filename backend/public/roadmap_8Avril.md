@@ -82,7 +82,7 @@ MB-2.1.2 : UI Funnel Mapping : ✅ COMPLÉTÉ.
 
 Bloc 2.2 : Calcul KPIs & Logique Analytics
 
-MB-2.2.1 : Tracking RDV "Réalisé" : ❓ À DÉFINIR. Comment savoir si un RDV scheduled a eu lieu ? (Webhook invitee.canceled ? Update manuel ? API externe ?). Priorité : HAUTE (pour KPIs fiables). Mesure de Succès : Méthode définie et logique backend prête à être implémentée.
+MB-2.2.1 : Tracking RDV "Réalisé" : ✅ PARTIELLEMENT COMPLÉTÉ. Implémentation des webhooks Calendly pour états `canceled` et `no_show` avec statut `completed` déduit automatiquement pour les RDV passés lors d'une annulation de no-show. Reste à valider avec des webhooks réels (potentiellement reconnecter l'OAuth). Priorité : MOYENNE (Test avec webhooks réels). Mesure de Succès : Statuts de RDV correctement mis à jour via webhooks pour les événements `invitee.canceled`, `invitee_no_show.created`, et `invitee_no_show.deleted`.
 
 MB-2.2.2 : Services Analytics Backend : ✅ COMPLÉTÉ (Erreurs SQL Corrigées). Services modifiés pour s'aligner sur les signatures SQL exactes et neutralisés temporairement pour éviter les erreurs 500. Logique d'attribution vidéo/source reste à implémenter via les fonctions MVP dédiées. Priorité : BASSE (Après le Stitching Opt-in). Mesure de Succès : Services capables de calculer KPIs de base (Visiteurs, Leads, RDV, Ventes, CA, Taux Conv.) par source UTM/Vidéo SANS erreur SQL.
 
