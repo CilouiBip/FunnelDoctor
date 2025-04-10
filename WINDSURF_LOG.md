@@ -19,6 +19,29 @@
 
 - ✅ **Tests et validation**
   - Validation sur la page de test `test-optin-form.html` avec des formulaires statiques et dynamiques
+
+## [10/04/2025] Validation finale et nettoyage du Bloc MB-1.5 (Intégration Opt-in)
+
+### ✅ Validation complète et finalization MB-1.5
+
+- ✅ **Validation du système complet d'intégration Opt-in (MB-1.5)**
+  - ✅ **MB-1.5.1 (Injection JS)** : Implémentation réussie de l'injection du `visitorId` dans les formulaires d'opt-in
+  - ✅ **MB-1.5.2 (Backend Endpoint)** : Endpoint backend `/api/webhooks/optin` avec authentification par clé API
+  - ✅ **MB-1.5.3 (Touchpoint)** : Création des touchpoints de type `optin` dans le système
+
+- ✅ **Nettoyage et finalisation**
+  - Optimisation des logs debug pour éviter de surcharger la console (conditionnement par `config.debug`)
+  - Renforcement de la robustesse de la détection des champs email (sélecteur insensible à la casse)
+  - Utilisation cohérente de la nouvelle clé de localStorage `funnel_doctor_visitor_id`
+
+- ✅ **Points clés de l'architecture finale**
+  - Le script détecte tous les formulaires de la page (existants et ajoutés dynamiquement)
+  - Les formulaires contenant un champ email reçoivent un champ caché `visitorId`
+  - Lors de la soumission, l'email et le `visitorId` sont envoyés au backend via le webhook
+  - Le backend effectue le stitching entre le visiteur anonyme et le lead identifié par email
+  - Un touchpoint de type `optin` est créé et associé au MasterLead
+
+Le chainage **Visite -> Opt-in -> RDV -> Vente** est maintenant complet, avec un système robuste pour suivre les visiteurs à travers les différentes étapes du funnel même lorsqu'ils utilisent différents emails.
   - Confirmation de la présence du champ caché avec la valeur correcte du visitorId dans les requêtes
   - Vérification du bon fonctionnement avec différents types de formulaires
 

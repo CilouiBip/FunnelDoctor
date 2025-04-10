@@ -66,7 +66,7 @@ MB-1.4.2 : Statut API & Refresh Token : ❌ BLOQUÉ / À CORRIGER. Problème cri
 
 Bloc 1.5 : Intégration Opt-in (ConvertKit ou autre)
 
-MB-1.5.1 : Définition Stratégie Capture visitorId + Email : ❓ À DÉFINIR. Comment récupérer visitorId (LocalStorage) depuis le formulaire Opt-in et l'envoyer avec l'email au backend ? (Champ caché + JS ? Zapier ? Webhook natif ?). Priorité : HAUTE. Mesure de Succès : Méthode fiable identifiée et documentée.
+MB-1.5.1 : Définition Stratégie Capture visitorId + Email : ✅ COMPLÉTÉ. Implémentation réussie de l'injection JavaScript du visitorId via bridging.js qui détecte les formulaires d'opt-in et y injecte le funnel_doctor_visitor_id depuis le localStorage en champ caché. Tests validés avec confirmation de la transmission correcte des données au backend. Priorité : COMPLÉTÉE. Mesure de Succès : Injection automatique du visitorId dans tous les formulaires contenant un champ email.
 
 MB-1.5.2 : Implémentation Backend Réception Opt-in : ✅ COMPLÉTÉ. Nouvel endpoint `/api/webhooks/optin` créé avec authentification par clé API, validé via curl. Appelle correctement `MasterLeadService.findOrCreateMasterLead()` avec les paramètres email et visitorId. Réutilise l'infrastructure du backend pour la validation et la sécurité. Priorité : COMPLÉTÉE. Mesure de Succès : Endpoint fonctionnel recevant email+visitorId et créant/mettant à jour l'association MasterLead.
 
