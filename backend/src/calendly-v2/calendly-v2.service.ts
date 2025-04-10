@@ -589,7 +589,7 @@ export class CalendlyV2Service {
           user_id: userId,
           integration_type: 'calendly' as IntegrationType,
           event_type: 'rdv_canceled',
-          status: 'canceled', // Définir directement le statut 'canceled'
+          status: 'canceled' as 'canceled', // Définir directement le statut 'canceled'
           event_data: {
             calendly_event_uri: eventUri,
             scheduled_time: inviteePayload.scheduled_event?.start_time,
@@ -719,7 +719,7 @@ export class CalendlyV2Service {
           user_id: userId,
           integration_type: 'calendly' as IntegrationType,
           event_type: 'rdv_no_show',
-          status: 'no_show', // Définir directement le statut 'no_show'
+          status: 'no_show' as 'no_show', // Définir directement le statut 'no_show'
           event_data: {
             calendly_event_uri: eventUri,
             scheduled_time: inviteePayload.scheduled_event?.start_time,

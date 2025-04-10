@@ -37,3 +37,7 @@
 1. Générer une documentation complète pour le code
 2. Inclure les signatures de fonction, descriptions des paramètres, valeurs de retour, exemples d'utilisation et pièges courants
 3. Documenter les intégrations avec les services externes (Stripe, Calendly, ActiveCampaign, YouTube)
+
+
+Toujours démarrer le backend sur 3001 et il est lié à Ngrok , utilisez la commande ngrok http --domain=funnel.doctor.ngrok.app 3001
+et le front via 3000 toujours 

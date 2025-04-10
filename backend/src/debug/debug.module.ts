@@ -1,6 +1,8 @@
 import { Module, DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DebugController } from './debug.controller';
+import { CalendlyV2Module } from '../calendly-v2/calendly-v2.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 
 /**
  * Module de debug pour le développement et les tests
@@ -14,6 +16,8 @@ export class DebugModule {
       module: DebugModule,
       imports: [
         ConfigModule,
+        CalendlyV2Module,
+        WebhooksModule,
       ],
       controllers: [
         DebugController,

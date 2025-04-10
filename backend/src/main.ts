@@ -29,6 +29,11 @@ async function bootstrap() {
     allowedOrigins.push(frontendUrl);
   }
   
+  // IMPORTANT: Ajouter explicitement l'URL du backend pour permettre les requêtes same-origin
+  if (backendUrl && !allowedOrigins.includes(backendUrl)) {
+    allowedOrigins.push(backendUrl);
+  }
+  
   // Ajouter des origines supplémentaires depuis ALLOWED_ORIGINS
   const originsFromEnv = configService.get<string>('ALLOWED_ORIGINS');
   if (originsFromEnv) {
@@ -103,9 +108,24 @@ async function bootstrap() {
   // Configuration CORS STANDARD complète
   app.enableCors({
     origin: (origin, callback) => {
+      // En mode développement, tout autoriser avec logs pour le débogage
+      if (env === 'development') {
+        console.log(`[CORS main.ts] DEV MODE - Allowing origin: ${origin || 'No origin (local request)'}`);
+        callback(null, true);
+        return;
+      }
+
       // Pas d'origine (requête locale ou même origine) - toujours autoriser
       if (!origin) {
-        console.log(`[CORS main.ts] Allowed local origin`);
+        console.log(`[CORS main.ts] Allowed local request (no origin)`);
+        callback(null, true);
+        return;
+      }
+      
+      // Vérification explicite pour le backend lui-même (same-origin)
+      // Comparer avec backendUrl mais aussi avec 'http://localhost:3001' explicitement
+      if (origin === backendUrl || origin === 'http://localhost:3001') {
+        console.log(`[CORS main.ts] Allowed backend self-origin: ${origin}`);
         callback(null, true);
         return;
       }

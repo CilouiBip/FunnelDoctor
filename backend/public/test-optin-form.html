@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Formulaire Opt-in FunnelDoctor</title>
+  
+  <!-- Snippet FunnelDoctor V2 -->
+  <script>
+    (function(w,d,s){
+      var fdLoader=d.createElement(s);
+      fdLoader.async=true;
+      // Utilise l'URL locale du backend pour les scripts
+      fdLoader.src="http://localhost:3001/funnel-doctor.js"; 
+      // Utilise un Site ID de test (l'UUID de mon compte, par exemple)
+      fdLoader.setAttribute("data-fd-site", "00f08a34-9e6d-437e-acc9-e7d618c2bc74"); // Remplace par un vrai site ID si nécessaire pour les tests backend
+      
+      fdLoader.onload = function() {
+        var fdBridging = d.createElement(s);
+        fdBridging.async = true;
+        fdBridging.src = "http://localhost:3001/bridging.js"; 
+        // ACTIVE LE DEBUG pour ce test !
+        fdBridging.setAttribute("data-debug", "true"); 
+        d.head.appendChild(fdBridging);
+      };
+      fdLoader.onerror = function() {
+        console.error("Erreur critique: Impossible de charger funnel-doctor.js depuis http://localhost:3001/funnel-doctor.js");
+      };
+      d.head.appendChild(fdLoader); 
+    })(window,document,"script");
+  </script>
+  <!-- Fin Snippet -->
+  
+  <style> body { font-family: sans-serif; padding: 20px; } form { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; } </style>
+</head>
+<body>
+
+  <h1>Test Injection VisitorID</h1>
+
+  <h2>Formulaire Opt-in Standard</h2>
+  <form id="optinForm1" action="/fake-submit" method="post">
+    <label for="email1">Email :</label><br>
+    <input type="email" id="email1" name="email" placeholder="Entrez votre email" required><br><br>
+    <label for="name1">Nom (optionnel) :</label><br>
+    <input type="text" id="name1" name="firstName"><br><br>
+    <button type="submit">S'inscrire (Form 1)</button>
+    <p><small>Ce formulaire devrait avoir le visitorId caché ajouté.</small></p>
+  </form>
+
+  <h2>Formulaire SANS Champ Email Visible</h2>
+  <form id="noEmailForm" action="/fake-submit" method="post">
+    <label for="name2">Nom :</label><br>
+    <input type="text" id="name2" name="name" required><br><br>
+    <button type="submit">Soumettre (Form 2)</button>
+    <p><small>Ce formulaire NE devrait PAS avoir le visitorId caché ajouté.</small></p>
+  </form>
+  
+  <h2>Formulaire Ajouté Dynamiquement</h2>
+  <button onclick="addDynamicForm()">Ajouter Formulaire Dynamique</button>
+  <div id="dynamicFormContainer"></div>
+  <p><small>Cliquez sur le bouton, puis le formulaire dynamique ajouté devrait aussi avoir le visitorId.</small></p>
+
+  <script>
+    // Fonction pour ajouter un formulaire après le chargement de la page
+    function addDynamicForm() {
+      const container = document.getElementById('dynamicFormContainer');
+      if (!container.querySelector('form')) { // Ajouter seulement s'il n'y en a pas déjà
+        const form = document.createElement('form');
+        form.id = 'dynamicForm';
+        form.action = '/fake-submit';
+        form.method = 'post';
+        form.innerHTML = `
+          <h3>Formulaire Dynamique</h3>
+          <label for="email_dyn">Email dynamique:</label><br>
+          <input type="email" id="email_dyn" name="email" required><br><br>
+          <button type="submit">S'inscrire (Dynamique)</button>
+        `;
+        container.appendChild(form);
+        // Ajouter l'interception pour le test
+        addSubmitListener(form); 
+      }
+    }
+
+    // Fonction pour intercepter la soumission et afficher les données
+    function addSubmitListener(formElement) {
+       formElement.addEventListener('submit', function(event) {
+        event.preventDefault(); // Empêche l'envoi réel
+        const formData = new FormData(event.target);
+        console.log(`--- Données soumises pour ${event.target.id} ---`);
+        for (let [key, value] of formData.entries()) {
+          console.log(` -> ${key}: ${value}`);
+        }
+        alert(`Formulaire ${event.target.id} soumis ! Vérifiez la console.`);
+      });
+    }
+    
+    // Ajouter les listeners aux formulaires existants au chargement
+    document.addEventListener('DOMContentLoaded', () => {
+      const form1 = document.getElementById('optinForm1');
+      const form2 = document.getElementById('noEmailForm');
+      if(form1) addSubmitListener(form1);
+      if(form2) addSubmitListener(form2);
+    });
+  </script>
+
+</body>
+</html>
