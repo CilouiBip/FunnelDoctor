@@ -1,3 +1,33 @@
+## Implémentation d'une stratégie de tracking robuste pour les liens externes (11/04/2025)
+
+### [11/04/2025] Solution au problème critique du tracking entre domaines
+
+#### 1. Identification et résolution du problème des liens externes
+
+- ✅ **Découverte du "chaînon manquant" dans la chaîne de tracking**
+  - Identification des limites des cookies first-party et du localStorage entre domaines différents
+  - Analyse du comportement actuel : fonction injectParamsIntoIClosedWidgets() efficace pour les embeds mais inutile pour les liens
+  - Correction d'un bug ReferenceError: config is not defined dans injectVisitorIdIntoForms
+  
+- ✅ **Implémentation d'une solution hybride**
+  - Introduction de l'attribut `data-fd-booking-link` comme signal utilisateur pour identifier les liens pertinents
+  - Développement de la fonction `modifyBookingLinks()` dans bridging.js (v1.3)
+  - Mise en place d'une logique robuste pour modifier les URLs de liens en y ajoutant fd_visitor_id et UTMs
+  - Ajout de logs détaillés pour faciliter le débogage ([DEBUG-BOOKING-LINK], [DEBUG-ICLOSED])
+
+- ✅ **Test et validation locale E2E**
+  - Création de pages de test locales simulant un tunnel complet (opt-in → VSL → embed iClosed)
+  - Validation du tracking initial (funnel-doctor.js) et des cookies/localStorage
+  - Test réussi de la modification des liens avec `data-fd-booking-link`
+  - Passage des paramètres via URL et récupération par iClosed
+  - Identification et correction du mapping Zapier (Tracking Fd Visitor Id → visitorId)
+  - Confirmation du stitching backend basé sur le visitorId correct
+  
+- ✅ **Documentation complète de la solution**
+  - Création de docs/bridging_script_logic.md décrivant la stratégie hybride
+  - Documentation des différents scénarios de tunnels (embeds vs liens)
+  - Explication du rôle des cookies, localStorage et paramètres URL
+
 ## Intégration iClosed, finalisation Calendly et suivi des RDV (MB-1.2 & MB-2.2.1)
 
 ### [10/04/2025] Finalisation de l'intégration iClosed et du tracking complet des RDV (Webhooks, Zapier, Stitching)
