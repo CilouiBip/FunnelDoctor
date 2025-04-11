@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FunnelDoctor - Test Page VSL Locale</title>
+  
+  <!-- Styles basiques pour la du00e9mo -->
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+    .video-container {
+      background: #000;
+      border-radius: 5px;
+      margin: 20px 0;
+      position: relative;
+      padding-bottom: 56.25%; /* Ratio 16:9 */
+      height: 0;
+      overflow: hidden;
+    }
+    .video-container div {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      background: #111;
+    }
+    .cta-button {
+      display: inline-block;
+      margin-top: 20px;
+      background: #e74c3c;
+      color: white;
+      padding: 15px 30px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 18px;
+      text-align: center;
+      transition: background 0.3s;
+    }
+    .cta-button:hover {
+      background: #c0392b;
+    }
+    .sales-text {
+      margin: 20px 0;
+      font-size: 16px;
+    }
+    .debug-info {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 30px;
+      font-size: 14px;
+    }
+    .debug-info h3 {
+      margin-top: 0;
+      color: #6c757d;
+    }
+  </style>
+  
+  <!-- SNIPPET FUNNEL DOCTOR (environnement local) -->
+  <script src="http://localhost:3001/funnel-doctor.js" data-fd-site="test-local" async></script>
+  <script src="http://localhost:3001/bridging.js" async></script>
+</head>
+<body>
+  <h1>Page VSL Locale</h1>
+  <p>
+    Cette page simule une vidu00e9o de vente (VSL) avec un call-to-action vers une page de ru00e9servation.
+    Le lien CTA a l'attribut <code>data-fd-booking-link</code> pour u00eatre modifiu00e9 par bridging.js.
+  </p>
+  
+  <!-- Fausse vidu00e9o -->
+  <div class="video-container">
+    <div>[SIMULATION DE VIDu00c9O DE VENTE]</div>
+  </div>
+  
+  <!-- Texte de vente -->
+  <div class="sales-text">
+    <h2>Du00e9couvrez notre solution pour multiplier par 3 vos conversions</h2>
+    <p>Apru00e8s avoir visionnu00e9 cette pru00e9sentation, vous comprenez maintenant pourquoi la plupart des entrepreneurs u00e9chouent dans leur tracking et comment notre mu00e9thode peut transformer votre business.</p>
+    <p>La prochaine u00e9tape est simple : ru00e9servez un appel de du00e9couverte avec notre u00e9quipe pour u00e9tablir votre plan d'action personnalisu00e9.</p>
+  </div>
+  
+  <!-- Bouton CTA avec data-fd-booking-link pour le test -->
+  <a href="/test_local_embed_iclosed.html" class="cta-button" data-fd-booking-link>Ru00e9server mon Appel u2192</a>
+  
+  <!-- Zone de debug pour visualiser les donnu00e9es de tracking -->
+  <div class="debug-info">
+    <h3>Donnu00e9es de Tracking (Debug)</h3>
+    <div id="debug-output">Chargement des donnu00e9es...</div>
+  </div>
+  
+  <script>
+    // Afficher les donnu00e9es de tracking (localStorage et cookies) pour du00e9bogage
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        const debugOutput = document.getElementById('debug-output');
+        const trackingData = {
+          url_parameters: window.location.search,
+          visitor_id: localStorage.getItem('funnel_doctor_visitor_id'),
+          utm_source: localStorage.getItem('funnel_doctor_utm_source'),
+          utm_medium: localStorage.getItem('funnel_doctor_utm_medium'),
+          utm_campaign: localStorage.getItem('funnel_doctor_utm_campaign'),
+          utm_content: localStorage.getItem('funnel_doctor_utm_content'),
+          utm_term: localStorage.getItem('funnel_doctor_utm_term'),
+          cookies: document.cookie
+        };
+        
+        debugOutput.innerHTML = '<pre>' + JSON.stringify(trackingData, null, 2) + '</pre>';
+        
+        // Log pour vu00e9rifier si bridging.js modifie correctement l'URL avec data-fd-booking-link
+        console.log('CTA Link original:', document.querySelector('a[data-fd-booking-link]').href);
+        setTimeout(() => {
+          console.log('CTA Link after bridging.js (should be modified):', document.querySelector('a[data-fd-booking-link]').href);
+        }, 2000);
+      }, 1500); // Du00e9lai pour laisser le temps aux scripts de s'exu00e9cuter
+    });
+  </script>
+</body>
+</html>

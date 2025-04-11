@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FunnelDoctor - Test Page Opt-in Locale</title>
+  
+  <!-- Styles basiques pour la démo -->
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+    form {
+      background: #f9f9f9;
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 5px;
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background: #3498db;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    a {
+      display: inline-block;
+      margin-top: 20px;
+      background: #2ecc71;
+      color: white;
+      padding: 10px 15px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .debug-info {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 30px;
+      font-size: 14px;
+    }
+    .debug-info h3 {
+      margin-top: 0;
+      color: #6c757d;
+    }
+  </style>
+  
+  <!-- SNIPPET FUNNEL DOCTOR (environnement local) -->
+  <script src="http://localhost:3001/funnel-doctor.js" data-fd-site="test-local" async></script>
+  <script src="http://localhost:3001/bridging.js" async></script>
+</head>
+<body>
+  <h1>Page Opt-in Locale</h1>
+  <p>
+    Cette page simule une page d'opt-in dans un entonnoir de vente. Les scripts FunnelDoctor et Bridging sont chargés pour capturer et stocker les UTMs et générer un visitor_id.
+  </p>
+  
+  <!-- Faux formulaire d'opt-in (non fonctionnel) -->
+  <form id="optin-form">
+    <h2>Accédez à notre vidéo de formation exclusive</h2>
+    <p>Remplissez ce formulaire pour recevoir l'accès immédiat :</p>
+    
+    <input type="text" placeholder="Votre prénom" required>
+    <input type="email" placeholder="Votre email" required>
+    <button type="button">RECEVOIR L'ACCÈS</button>
+    
+    <p><small>En soumettant ce formulaire, vous acceptez de recevoir nos communications.</small></p>
+  </form>
+  
+  <!-- Lien vers la page VSL -->
+  <a href="/test_local_vsl.html">Voir la VSL maintenant →</a>
+  
+  <!-- Zone de debug pour visualiser les données de tracking -->
+  <div class="debug-info">
+    <h3>Données de Tracking (Debug)</h3>
+    <div id="debug-output">Chargement des données...</div>
+  </div>
+  
+  <script>
+    // Afficher les données de tracking (localStorage et cookies) pour débogage
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        const debugOutput = document.getElementById('debug-output');
+        const trackingData = {
+          url_parameters: window.location.search,
+          visitor_id: localStorage.getItem('funnel_doctor_visitor_id'),
+          utm_source: localStorage.getItem('funnel_doctor_utm_source'),
+          utm_medium: localStorage.getItem('funnel_doctor_utm_medium'),
+          utm_campaign: localStorage.getItem('funnel_doctor_utm_campaign'),
+          utm_content: localStorage.getItem('funnel_doctor_utm_content'),
+          utm_term: localStorage.getItem('funnel_doctor_utm_term'),
+          cookies: document.cookie
+        };
+        
+        debugOutput.innerHTML = '<pre>' + JSON.stringify(trackingData, null, 2) + '</pre>';
+      }, 1500); // Délai pour laisser le temps aux scripts de s'exécuter
+    });
+  </script>
+</body>
+</html>

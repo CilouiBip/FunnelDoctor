@@ -1,3 +1,5 @@
+console.log('--- Bridging.js v1.3 Loaded (Booking Link Logic Added) ---');
+
 /**
  * FunnelDoctor - Script de bridging
  * 
@@ -5,8 +7,9 @@
  * 1. Injecter le visitor_id dans les liens Calendly
  * 2. Modifier les bouttons de paiement Stripe pour inclure le visitor_id
  * 3. Assurer le suivi des conversions entre les différentes étapes du funnel
+ * 4. Injecter le visitor_id et les UTMs dans les widgets iClosed
  * 
- * V2.4: Solution complète avec postMessage + bridge/associate pour Calendly
+ * V2.5: Ajout d'une solution pour iClosed avec debug
  */
 
 (function() {
@@ -42,6 +45,28 @@
   // Obtenir le visitor_id actuel
   const visitorId = window.FunnelDoctor.getVisitorId();
   fdLog('info', 'Visitor ID détecté:', visitorId);
+  
+  // Lecture des UTMs depuis le localStorage
+  const utmParams = {};
+  try {
+    // Vérification debug du localStorage complet
+    fdLog('info', '[DEBUG-UTM] Contenu du localStorage:', Object.keys(localStorage));
+    
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(param => {
+      const localStorageKey = `funnel_doctor_${param}`;
+      const value = localStorage.getItem(localStorageKey);
+      if (value) {
+        utmParams[param] = value;
+        fdLog('info', `[DEBUG-UTM] ${param} trouvé dans localStorage:`, value);
+      } else {
+        fdLog('warn', `[DEBUG-UTM] ${param} NON trouvé dans localStorage`);
+      }
+    });
+    
+    fdLog('info', '[DEBUG-UTM] Paramètres UTM complets:', utmParams);
+  } catch (e) {
+    fdLog('error', '[DEBUG-UTM] Erreur lors de la lecture des UTMs:', e);
+  }
   
   // Détection de la plateforme
   const isConvertKit = window.location.hostname.includes('kit.com');
@@ -568,45 +593,45 @@
   
   // Fonction pour injecter automatiquement le visitorId dans les formulaires d'opt-in
   function injectVisitorIdIntoForms() {
-    if (config.debug) {
+    if (debugMode) {
       console.debug('[FD Bridging] Fonction injectVisitorIdIntoForms appelée.');
     }
     const visitorId = localStorage.getItem('funnel_doctor_visitor_id'); // Clé de stockage du visitorId
 
     if (!visitorId) {
-      if (config.debug) {
+      if (debugMode) {
         console.debug('[FD Bridging] Pas de visitorId disponible dans localStorage.');
       }
       return;
     }
-    if (config.debug) {
+    if (debugMode) {
       console.debug('[FD Bridging] Visitor ID lu:', visitorId);
     }
 
     const forms = document.querySelectorAll('form');
-    if (config.debug) {
+    if (debugMode) {
       console.debug('[FD Bridging] Formulaires trouvés sur la page:', forms.length);
     }
 
     forms.forEach(form => {
-      if (config.debug) {
+      if (debugMode) {
         console.debug('[FD Bridging] Traitement du formulaire:', form.id || 'sans-id');
       }
       // Heuristique pour trouver un champ email visible
       const emailField = form.querySelector('input[type="email"]:not([type="hidden"]), input[name*="email"]:not([type="hidden"]), input[id*="email"]:not([type="hidden"]), input[placeholder*="email"]:not([type="hidden"]), input[class*="email"]:not([type="hidden"]), .email-field:not([type="hidden"]), [data-email]:not([type="hidden"]), [data-field-type="email"]:not([type="hidden"])');
-      if (config.debug) {
+      if (debugMode) {
         console.debug('[FD Bridging] Champ Email trouvé dans ce formulaire ?', !!emailField);
       }
 
       if (emailField) {
         // Vérifier si le champ visitorId existe déjà
         const existingField = form.querySelector('input[type="hidden"][name="visitorId"]'); // Recherche plus spécifique
-        if (config.debug) {
+        if (debugMode) {
           console.debug('[FD Bridging] Champ visitorId caché existant trouvé ?', !!existingField);
         }
 
         if (!existingField) {
-          if (config.debug) {
+          if (debugMode) {
             console.debug('[FD Bridging] Ajout du champ caché au formulaire');
           }
           const hiddenInput = document.createElement('input');
@@ -615,14 +640,14 @@
           hiddenInput.value = visitorId;
           hiddenInput.setAttribute('data-fd-added', 'true'); // Marqueur optionnel
           form.appendChild(hiddenInput);
-        } else if (config.debug) {
+        } else if (debugMode) {
           console.debug('[FD Bridging] Champ visitorId déjà présent, pas d\'ajout');
         }
-      } else if (config.debug) {
+      } else if (debugMode) {
         console.debug('[FD Bridging] Pas de champ email trouvé dans ce formulaire, injection ignorée');
       }
     });
-    if (config.debug) {
+    if (debugMode) {
       console.debug('[FD Bridging] Fin du traitement des formulaires');
     }
   }
@@ -641,10 +666,32 @@
     fdLog('info', 'Injection du visitorId dans les formulaires...');
     injectVisitorIdIntoForms();
     
+    // Injecter le visitor_id et les UTMs dans les widgets iClosed
+    fdLog('info', 'Recherche et modification des widgets iClosed...');
+    console.log('[DEBUG-INIT] Tentative d\'appel de injectParamsIntoIClosedWidgets...');
+    const iClosedSuccess = injectParamsIntoIClosedWidgets();
+    
+    // Programmer l'appel à modifyBookingLinks avec un délai
+    const linkModificationDelay = 1000; // ms
+    console.log(`[DEBUG-INIT] Appel de modifyBookingLinks programmé dans ${linkModificationDelay}ms.`);
+    setTimeout(() => {
+      console.log('[DEBUG-INIT] Exécution de modifyBookingLinks...');
+      const bookingLinksSuccess = modifyBookingLinks();
+      
+      // Mise à jour de l'événement après modification des liens de booking
+      if (bookingLinksSuccess) {
+        window.FunnelDoctor.trackEvent('booking_links_modified', {
+          visitor_id: visitorId,
+          success: bookingLinksSuccess
+        });
+      }
+    }, linkModificationDelay);
+    
     // Suivre l'événement d'initialisation du bridging
     window.FunnelDoctor.trackEvent('bridging_initialized', {
       visitor_id: visitorId,
-      calendly_links_modified: calendlySuccess
+      calendly_links_modified: calendlySuccess,
+      iclosed_widgets_modified: iClosedSuccess
     });
     
     // Si aucun lien Calendly n'a été traité avec succès, programmer des réessais
@@ -681,6 +728,233 @@
     }
   }
   
+  /**
+   * Fonction pour injecter le visitor_id et les UTMs dans les widgets iClosed
+   */
+  function injectParamsIntoIClosedWidgets() {
+    console.log('[DEBUG-ICLOSED] Fonction injectParamsIntoIClosedWidgets démarrée.');
+    fdLog('info', '[DEBUG-ICLOSED] Recherche de widgets iClosed');
+    
+    // Sélecteurs pour trouver des éléments iClosed
+    const iClosedSelectors = [
+      // Sélecteurs spécifiques au widget iClosed
+      '.iclosed-widget',
+      'div[data-url*="iclosed.io"]',
+      'iframe[src*="iclosed.io"]',
+      // Autres éléments possibles
+      'div[class*="iclosed"]',
+      '[data-iclosed]'
+    ];
+    
+    // Logs pour vérifier directement les sélecteurs
+    iClosedSelectors.forEach(selector => {
+      const elementsFound = document.querySelectorAll(selector);
+      console.log(`[DEBUG-ICLOSED] Sélecteur "${selector}": ${elementsFound.length} éléments trouvés.`);
+    });
+
+    let iClosedElements = [];
+    let elementsModified = 0;
+    let totalElementsFound = 0;
+    
+    // Recherche d'éléments iClosed via les sélecteurs
+    iClosedSelectors.forEach(selector => {
+      try {
+        const elements = document.querySelectorAll(selector);
+        fdLog('info', `[DEBUG-ICLOSED] Sélecteur "${selector}": ${elements.length} éléments trouvés`);
+        
+        elements.forEach(element => {
+          if (!iClosedElements.includes(element)) {
+            iClosedElements.push(element);
+          }
+        });
+      } catch (e) {
+        fdLog('warn', `[DEBUG-ICLOSED] Erreur avec le sélecteur "${selector}":`, e.message);
+      }
+    });
+    
+    fdLog('info', `[DEBUG-ICLOSED] Total des éléments iClosed trouvés: ${iClosedElements.length}`);
+    
+    // Modification des éléments iClosed
+    iClosedElements.forEach((element, index) => {
+      try {
+        fdLog('info', `[DEBUG-ICLOSED] Traitement de l'élément iClosed #${index+1}:`, element);
+        
+        // 1. Chercher un attribut URL comme data-url
+        let dataUrl = element.getAttribute('data-url');
+        if (dataUrl && dataUrl.includes('iclosed.io')) {
+          fdLog('info', `[DEBUG-ICLOSED] URL trouvée dans data-url: ${dataUrl}`);
+          
+          try {
+            // Modifier l'URL pour inclure le visitor_id
+            const urlObj = new URL(dataUrl);
+            
+            // Ajouter le visitor_id via utm_content (approche principale)
+            urlObj.searchParams.set('utm_content', visitorId);
+            fdLog('info', `[DEBUG-ICLOSED] Ajout de visitor_id dans utm_content: ${visitorId}`);
+            
+            // Ajouter les autres UTMs s'ils existent
+            Object.keys(utmParams).forEach(param => {
+              if (param !== 'utm_content') { // utm_content est déjà défini
+                urlObj.searchParams.set(param, utmParams[param]);
+                fdLog('info', `[DEBUG-ICLOSED] Ajout de ${param}: ${utmParams[param]}`);
+              }
+            });
+            
+            // Mettre à jour l'attribut data-url
+            const newUrl = urlObj.toString();
+            element.setAttribute('data-url', newUrl);
+            fdLog('info', `[DEBUG-ICLOSED] URL modifiée: ${newUrl}`);
+            elementsModified++;
+          } catch (e) {
+            fdLog('error', `[DEBUG-ICLOSED] Erreur lors de la modification de l'URL:`, e, '\nURL problématique:', dataUrl);
+          }
+        }
+        
+        // 2. Si c'est un iframe, modifier l'attribut src
+        if (element.tagName === 'IFRAME' && element.src && element.src.includes('iclosed.io')) {
+          fdLog('info', `[DEBUG-ICLOSED] iframe trouvé avec src: ${element.src}`);
+          
+          try {
+            const urlObj = new URL(element.src);
+            urlObj.searchParams.set('utm_content', visitorId);
+            
+            // Ajouter les autres UTMs
+            Object.keys(utmParams).forEach(param => {
+              if (param !== 'utm_content') {
+                urlObj.searchParams.set(param, utmParams[param]);
+              }
+            });
+            
+            const newSrc = urlObj.toString();
+            element.src = newSrc;
+            fdLog('info', `[DEBUG-ICLOSED] src d'iframe modifié: ${newSrc}`);
+            elementsModified++;
+          } catch (e) {
+            fdLog('error', `[DEBUG-ICLOSED] Erreur lors de la modification du src d'iframe:`, e);
+          }
+        }
+        
+        // 3. Vérifier si l'élément a des attributs data-* spécifiques à iClosed
+        const dataAttrs = {};
+        for (let i = 0; i < element.attributes.length; i++) {
+          const attr = element.attributes[i];
+          if (attr.name.startsWith('data-') && !attr.name.includes('url')) {
+            dataAttrs[attr.name] = attr.value;
+          }
+        }
+        
+        if (Object.keys(dataAttrs).length > 0) {
+          fdLog('info', `[DEBUG-ICLOSED] Attributs data-* trouvés:`, dataAttrs);
+        }
+        
+        // 4. Vérifier si des cookies first_utm_* existent et les créer si nécessaire
+        if (visitorId) {
+          // Définition d'un cookie pour iClosed
+          document.cookie = `first_utm_content=${visitorId}; path=/`;
+          fdLog('info', `[DEBUG-ICLOSED] Cookie first_utm_content défini avec visitorId: ${visitorId}`);
+          
+          // Ajouter les autres UTMs dans les cookies
+          Object.keys(utmParams).forEach(param => {
+            const cookieName = `first_${param}`;
+            document.cookie = `${cookieName}=${utmParams[param]}; path=/`;
+            fdLog('info', `[DEBUG-ICLOSED] Cookie ${cookieName} défini: ${utmParams[param]}`);
+          });
+        }
+        
+      } catch (e) {
+        fdLog('error', `[DEBUG-ICLOSED] Erreur lors du traitement de l'élément iClosed #${index+1}:`, e);
+      }
+    });
+    
+    // Log des résultats
+    fdLog('info', `[DEBUG-ICLOSED] Résultats: ${elementsModified} éléments iClosed modifiés sur ${iClosedElements.length} trouvés`);
+    
+    // Si aucun élément n'a été trouvé, chercher le script widget.js
+    if (iClosedElements.length === 0) {
+      const iClosedScript = document.querySelector('script[src*="iclosed.io/assets/widget.js"]');
+      if (iClosedScript) {
+        fdLog('info', `[DEBUG-ICLOSED] Script widget.js trouvé, mais aucun widget. Vérifiez si le widget est injecté dynamiquement.`);
+      } else {
+        fdLog('info', `[DEBUG-ICLOSED] Aucun script iClosed détecté sur cette page.`);
+      }
+    }
+    
+    return elementsModified > 0;
+  }
+
+  /**
+   * Fonction pour modifier les liens de booking marqués avec data-fd-booking-link
+   * Ajoute les UTMs et le visitor_id depuis le localStorage à l'URL du lien
+   */
+  function modifyBookingLinks() {
+    const linkSelector = '[data-fd-booking-link]';
+    console.log(`[DEBUG-BOOKING-LINK] Recherche des liens avec sélecteur: ${linkSelector}`);
+    const bookingLinks = document.querySelectorAll(linkSelector);
+
+    if (!bookingLinks.length) {
+      console.log('[DEBUG-BOOKING-LINK] Aucun lien avec data-fd-booking-link trouvé.');
+      return false;
+    }
+    console.log(`[DEBUG-BOOKING-LINK] ${bookingLinks.length} liens trouvés.`);
+
+    let modifiedCount = 0;
+    bookingLinks.forEach((link, index) => {
+      console.log(`[DEBUG-BOOKING-LINK] Traitement du lien #${index + 1}:`, link);
+
+      // Lire TOUTES les données pertinentes du LS
+      const visitorId = localStorage.getItem('funnel_doctor_visitor_id');
+      const utmSource = localStorage.getItem('funnel_doctor_utm_source');
+      const utmMedium = localStorage.getItem('funnel_doctor_utm_medium');
+      const utmCampaign = localStorage.getItem('funnel_doctor_utm_campaign');
+      const utmContent = localStorage.getItem('funnel_doctor_utm_content');
+      const utmTerm = localStorage.getItem('funnel_doctor_utm_term');
+
+      const trackingData = { visitorId, utmSource, utmMedium, utmCampaign, utmContent, utmTerm };
+      console.log('[DEBUG-BOOKING-LINK] Données lues depuis LS:', trackingData);
+
+      if (!link.href) {
+        console.warn('[DEBUG-BOOKING-LINK] Le lien trouvé n\'a pas d\'attribut href.');
+        return; // Skip
+      }
+
+      // Vérifier s'il y a au moins une donnée à ajouter
+      const hasDataToAdd = Object.values(trackingData).some(value => value !== null && value !== undefined && value !== '');
+      if (!hasDataToAdd) {
+        console.log('[DEBUG-BOOKING-LINK] Aucune donnée pertinente trouvée dans LS pour modifier ce lien.');
+        return; // Skip
+      }
+
+      try {
+        let originalUrl = link.href;
+        // Utiliser document.baseURI comme base pour résoudre les URL relatives correctement
+        let url = new URL(originalUrl, document.baseURI);
+
+        // Ajouter les paramètres seulement s'ils ont une valeur
+        if (visitorId) url.searchParams.set('fd_visitor_id', visitorId);
+        if (utmSource) url.searchParams.set('utm_source', utmSource);
+        if (utmMedium) url.searchParams.set('utm_medium', utmMedium);
+        if (utmCampaign) url.searchParams.set('utm_campaign', utmCampaign);
+        if (utmContent) url.searchParams.set('utm_content', utmContent);
+        if (utmTerm) url.searchParams.set('utm_term', utmTerm);
+
+        const newUrl = url.toString();
+        // Vérifier si l'URL a réellement changé pour éviter les logs inutiles
+        if (newUrl !== originalUrl) {
+          console.log(`[DEBUG-BOOKING-LINK] Modification du href: ${originalUrl} -> ${newUrl}`);
+          link.href = newUrl;
+          modifiedCount++;
+        } else {
+          console.log(`[DEBUG-BOOKING-LINK] Aucune modification nécessaire pour le href (paramètres peut-être déjà présents ou vides).`);
+        }
+      } catch (error) {
+        console.error('[DEBUG-BOOKING-LINK] Erreur lors de la modification de l\'URL:', error, link);
+      }
+    });
+
+    console.log(`[DEBUG-BOOKING-LINK] ${modifiedCount} liens modifiés sur ${bookingLinks.length} trouvés.`);
+    return modifiedCount > 0;
+  }
+
   // Initialiser le bridging lors du chargement complet avec un délai suffisant
   if (document.readyState === 'complete') {
     setTimeout(init, 500); // Délai plus long pour s'assurer que tous les scripts sont chargés
